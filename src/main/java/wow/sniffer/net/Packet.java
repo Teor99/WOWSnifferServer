@@ -1,4 +1,9 @@
-package wow.sniffer;
+package wow.sniffer.net;
+
+import wow.sniffer.Utils;
+
+import java.io.ByteArrayInputStream;
+import java.io.DataInputStream;
 
 public class Packet {
     private final int opcode;
@@ -55,5 +60,9 @@ public class Packet {
 
     public byte[] getData() {
         return data;
+    }
+
+    public DataInputStream getDataInputStream() {
+        return new DataInputStream(new ByteArrayInputStream(getData()));
     }
 }

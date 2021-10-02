@@ -1,5 +1,8 @@
 package wow.sniffer;
 
+import java.io.DataInputStream;
+import java.io.IOException;
+
 public class Utils {
     private static final char[] HEX_ARRAY = "0123456789ABCDEF".toCharArray();
     public static String bytesToHex(byte[] bytes) {
@@ -14,21 +17,88 @@ public class Utils {
 
     public static int revertInt(int i) {
         int b1 = (i & 0xFF);
-        b1 <<= 24;
-        b1 &= 0xFF000000;
-
         int b2 = (i & 0xFF00);
-        b2 <<= 8;
-        b2 &= 0xFF0000;
-
         int b3 = (i & 0xFF0000);
-        b3 >>= 8;
-        b3 &= 0xFF00;
-
         int b4 = (i & 0xFF000000);
+
+        b1 <<= 24;
+        b2 <<= 8;
+        b3 >>= 8;
         b4 >>= 24;
+
+        b1 &= 0xFF000000;
+        b2 &= 0xFF0000;
+        b3 &= 0xFF00;
         b4 &= 0xFF;
 
         return b1 | b2 | b3 | b4;
+    }
+
+    public static int readIntReverted(DataInputStream dis) throws IOException {
+        return revertInt(dis.readInt());
+    }
+
+    public static String readCString(DataInputStream dis) throws IOException {
+        StringBuilder sb = new StringBuilder();
+
+        while (true) {
+            byte b = dis.readByte();
+            if (b == 0) break;
+            sb.append((char)b);
+        }
+
+        return sb.toString();
+    }
+
+    public static long readLongReverted(DataInputStream dis) throws IOException {
+        return revertLong(dis.readLong());
+    }
+
+    public static long revertLong(long l) {
+        long b1 = (l & 0xFFL);
+        long b2 = (l & 0xFF00L);
+        long b3 = (l & 0xFF0000L);
+        long b4 = (l & 0xFF000000L);
+        long b5 = (l & 0xFF00000000L);
+        long b6 = (l & 0xFF0000000000L);
+        long b7 = (l & 0xFF000000000000L);
+        long b8 = (l & 0xFF00000000000000L);
+
+        b1 <<= 56;
+        b2 <<= 40;
+        b3 <<= 24;
+        b4 <<= 8;
+        b5 >>= 8;
+        b6 >>= 24;
+        b7 >>= 40;
+        b8 >>= 56;
+
+        b1 &= 0xFF00000000000000L;
+        b2 &= 0xFF000000000000L;
+        b3 &= 0xFF0000000000L;
+        b4 &= 0xFF00000000L;
+        b5 &= 0xFF000000L;
+        b6 &= 0xFF0000L;
+        b7 &= 0xFF00L;
+        b8 &= 0xFFL;
+
+        return b1 | b2 | b3 | b4 | b5 | b6 | b7 | b8;
+    }
+
+    public static short readShortReverted(DataInputStream dis) throws IOException {
+        return revertShort(dis.readShort());
+    }
+
+    public static short revertShort(short s) {
+        short b1 = (short) (s & 0xFF);
+        short b2 = (short) (s & 0xFF00);
+
+        b1 <<= 8;
+        b2 >>= 8;
+
+        b1 &= 0xFF00L;
+        b2 &= 0xFFL;
+
+        return (short) (b1 | b2);
     }
 }
