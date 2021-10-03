@@ -23,6 +23,18 @@ public class GameContext {
         return timestamp;
     }
 
+    public String getFaction() {
+        switch (auctionHouseId) {
+            case 1:
+            case 2:
+                return "alliance";
+            case 5:
+                return "horde";
+        }
+
+        throw new IllegalArgumentException("Unknown auction faction id: " + auctionHouseId);
+    }
+
     public void setTimestamp(int timestamp) {
         this.timestamp = timestamp;
     }

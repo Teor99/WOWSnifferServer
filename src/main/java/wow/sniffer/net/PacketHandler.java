@@ -1,29 +1,39 @@
 package wow.sniffer.net;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
+import org.springframework.stereotype.Component;
 import wow.sniffer.Utils;
 import wow.sniffer.game.AuctionRecord;
 import wow.sniffer.game.Character;
 import wow.sniffer.game.GameContext;
 import wow.sniffer.game.ItemStat;
+import wow.sniffer.repos.ItemStatRepository;
 
 import java.io.DataInputStream;
 import java.io.EOFException;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
 import static wow.sniffer.net.Opcode.*;
 
+@Component
 public class PacketHandler {
-    private final DataInputStream dis;
-    private final GameContext gameContext = new GameContext();
+    @Autowired
+    private ItemStatRepository itemStatRepository;
 
-    public PacketHandler(DataInputStream dis) {
-        this.dis = dis;
+    private DataInputStream dis;
+    private GameContext gameContext;
+
+    public PacketHandler() {
     }
 
-    public void processInputStream() throws IOException {
+    public void processInputStream(DataInputStream dis) throws IOException {
         System.out.println("Begin of data stream processing");
+        this.dis = dis;
+        gameContext = new GameContext();
         while (true) {
             try {
                 Packet packet = readPacket();
@@ -118,8 +128,8 @@ public class PacketHandler {
     }
 
     private void smsgAuctionListResult(Packet packet) throws IOException {
-        System.out.println();
-        System.out.println("Auction result list func begin, game context records: " + gameContext.getAuctionRecords().size());
+//        System.out.println();
+//        System.out.println("Auction result list func begin, game context records: " + gameContext.getAuctionRecords().size());
         DataInputStream dis = packet.getDataInputStream();
         int count = Utils.readIntReverted(dis);
         if (count == 0) return;
@@ -132,7 +142,7 @@ public class PacketHandler {
             dis.skip(24);
             int buyout = Utils.readIntReverted(dis);
             dis.skip(16);
-            gameContext.getAuctionRecords().add(new AuctionRecord(id, itemCount, buyout));
+            gameContext.getAuctionRecords().add(new AuctionRecord(id, packet.getTimestamp(), itemCount, buyout, gameContext.getFaction()));
         }
 
         int totalItemCount = Utils.readIntReverted(dis);
@@ -146,7 +156,7 @@ public class PacketHandler {
             System.out.println();
             System.out.println("New item stat found(" + itemStatList.size() + "):");
             itemStatList.forEach(System.out::println);
-//            gameContext.getAuctionRecords().clear();
+            itemStatRepository.saveAll(itemStatList);
         }
     }
 
@@ -160,13 +170,21 @@ public class PacketHandler {
             ItemStat itemStat = new ItemStat(auctionRecord.getId());
             for (AuctionRecord ar : tmpList) {
                 if (itemStat.getId() == ar.getId()) {
+                    // total count
                     itemStat.setTotalCount(itemStat.getTotalCount() + ar.getCount());
+                    // auction count
                     itemStat.setAuctionCount(itemStat.getAuctionCount() + 1);
+                    // min buyout
                     if (itemStat.getMinBuyout() == 0) {
                         itemStat.setMinBuyout(ar.getBuyoutPerItem());
                     } else if (ar.getBuyoutPerItem() != 0) {
                         itemStat.setMinBuyout(Math.min(itemStat.getMinBuyout(), ar.getBuyoutPerItem()));
                     }
+                    // timestamp
+                    itemStat.setTimestamp(new Date((long)auctionRecord.getTimestamp() * 1000));
+                    // faction
+                    itemStat.setFaction(gameContext.getFaction());
+
                     listToRemove.add(ar);
                 }
             }

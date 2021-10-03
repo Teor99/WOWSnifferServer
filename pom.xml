@@ -7,6 +7,13 @@
     <groupId>wow.sniffer</groupId>
     <artifactId>WOWSnifferServer</artifactId>
     <version>1.0-SNAPSHOT</version>
+
+    <parent>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <groupId>org.springframework.boot</groupId>
+        <version>2.5.3</version>
+    </parent>
+
     <dependencies>
         <dependency>
             <groupId>junit</groupId>
@@ -14,11 +21,41 @@
             <version>4.13</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>mysql</groupId>
+            <artifactId>mysql-connector-java</artifactId>
+        </dependency>
     </dependencies>
 
     <properties>
         <maven.compiler.source>11</maven.compiler.source>
         <maven.compiler.target>11</maven.compiler.target>
     </properties>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.0.2</version>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <addClasspath>true</addClasspath>
+                            <mainClass>wow.sniffer.Server</mainClass>
+                        </manifest>
+                    </archive>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 
 </project>
