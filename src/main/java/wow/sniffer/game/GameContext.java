@@ -1,5 +1,7 @@
 package wow.sniffer.game;
 
+import wow.sniffer.game.mail.Mail;
+
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -11,6 +13,7 @@ public class GameContext {
     private final List<AuctionRecord> auctionRecords = new ArrayList<>();
     private Date timestamp;
     private AuctionFaction auctionFaction;
+    private List<Mail> mailList;
 
     public Character getCharacter() {
         return character;
@@ -54,5 +57,13 @@ public class GameContext {
 
     public void setAccountName(String accountName) {
         this.accountName = accountName;
+    }
+
+    public List<Mail> getMailList() {
+        return mailList;
+    }
+
+    public void setMailList(List<Mail> mailList) {
+        this.mailList = mailList;
     }
 }

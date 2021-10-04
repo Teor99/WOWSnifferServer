@@ -1,6 +1,6 @@
 package wow.sniffer.net;
 
-public enum MsgType {
+public enum Direction {
     ClientToServer,
     ServerToClient,
     BNClientToServer,

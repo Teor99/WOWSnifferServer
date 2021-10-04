@@ -16,4 +16,12 @@ public class PacketHandlerTest {
             packetHandler.processInputStream(dis);
         }
     }
+
+    @Test
+    public void processInputStream2() throws IOException {
+        try (DataInputStream dis = new DataInputStream(new FileInputStream("C:\\Users\\Maxi\\source\\repos\\hookLib\\Debug\\wowsniff_12340_1633268261_2021y10m03d18h37i41s.bin"))) {
+            PacketHandler packetHandler = new PacketHandler();
+            packetHandler.processInputStream(dis);
+        }
+    }
 }

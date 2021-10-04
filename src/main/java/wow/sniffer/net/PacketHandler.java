@@ -12,8 +12,13 @@ import wow.sniffer.game.GameContext;
 import wow.sniffer.game.entity.ItemAuctionInfo;
 import wow.sniffer.game.entity.ItemHistory;
 import wow.sniffer.game.entity.ItemStat;
+import wow.sniffer.game.entity.TradeHistoryRecord;
+import wow.sniffer.game.mail.Mail;
+import wow.sniffer.game.mail.MailItem;
+import wow.sniffer.game.mail.MailType;
 import wow.sniffer.repos.ItemHistoryRepository;
 import wow.sniffer.repos.ItemStatRepository;
+import wow.sniffer.repos.TradeHistoryRecordRepository;
 
 import java.io.DataInputStream;
 import java.io.EOFException;
@@ -22,8 +27,7 @@ import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
-
-import static wow.sniffer.net.Opcode.*;
+import java.util.stream.Collectors;
 
 @Component
 public class PacketHandler {
@@ -34,6 +38,8 @@ public class PacketHandler {
     private ItemStatRepository itemStatRepository;
     @Autowired
     private ItemHistoryRepository itemHistoryRepository;
+    @Autowired
+    private TradeHistoryRecordRepository tradeHistoryRecordRepository;
 
     private DataInputStream dis;
     private GameContext gameContext;
@@ -59,7 +65,7 @@ public class PacketHandler {
     private Packet readPacket() throws IOException {
         int packetOpcode = Utils.readIntReverted(dis);
         int packetSize = Utils.readIntReverted(dis);
-        Date timestamp = new Date((long)Utils.readIntReverted(dis) * 1000);
+        Date timestamp = new Date((long) Utils.readIntReverted(dis) * 1000);
         byte packetType = dis.readByte();
         byte[] packetData = null;
 
@@ -77,25 +83,133 @@ public class PacketHandler {
     private void handlePacket(Packet packet) {
 
         try {
-            if (packet.getOpcode() == CMSG_AUTH_SESSION.opcode) {
-                cmsgAuthSession(packet);
-            } else if (packet.getOpcode() == SMSG_ENUM_CHARACTERS_RESULT.opcode) {
-                smsgEnumCharactersResult(packet);
-            } else if (packet.getOpcode() == CMSG_PLAYER_LOGIN.opcode) {
-                cmsgPlayerLogin(packet);
-            } else if (packet.getOpcode() == SMSG_SEND_KNOWN_SPELLS.opcode) {
-                smsgSendKnownSpells(packet);
-            } else if (packet.getOpcode() == CMSG_AUCTION_LIST_ITEMS.opcode) {
-                cmsgAuctionListItems(packet);
-            } else if (packet.getOpcode() == SMSG_AUCTION_LIST_RESULT.opcode) {
-                smsgAuctionListResult(packet);
-            } else if (packet.getOpcode() == MSG_AUCTION_HELLO.opcode && packet.getType() == MsgType.ServerToClient.ordinal()) {
-                smsgAuctionHello(packet);
+            Opcode opcode = Opcode.getOpcodeByCode(packet.getOpcode());
+            switch (opcode) {
+                case CMSG_AUTH_SESSION:
+                    cmsgAuthSession(packet);
+                    break;
+                case SMSG_ENUM_CHARACTERS_RESULT:
+                    smsgEnumCharactersResult(packet);
+                    break;
+                case CMSG_PLAYER_LOGIN:
+                    cmsgPlayerLogin(packet);
+                    break;
+                case SMSG_SEND_KNOWN_SPELLS:
+                    smsgSendKnownSpells(packet);
+                    break;
+                case CMSG_AUCTION_LIST_ITEMS:
+                    cmsgAuctionListItems(packet);
+                    break;
+                case SMSG_AUCTION_LIST_RESULT:
+                    smsgAuctionListResult(packet);
+                    break;
+                case MSG_AUCTION_HELLO:
+                    if (packet.getType() == Direction.ServerToClient.ordinal()) smsgAuctionHello(packet);
+                    break;
+                case SMSG_MAIL_LIST_RESULT:
+                    smsgMailListResult(packet);
+                    break;
+                case SMSG_MAIL_COMMAND_RESULT:
+                    smsgMailCommandResult(packet);
+                    break;
             }
         } catch (IOException e) {
             log.warn(String.valueOf(packet));
             e.printStackTrace();
         }
+
+    }
+
+    private void smsgMailCommandResult(Packet packet) throws IOException {
+        DataInputStream dis = packet.getDataInputStream();
+        int mailId = Utils.readIntReverted(dis);
+        int actionCode = Utils.readIntReverted(dis);
+        int errorCode = Utils.readIntReverted(dis);
+
+        log.info("mailId: " + mailId + " action: " + actionCode + " error: " + errorCode);
+
+        if (actionCode == 4 && errorCode == 0) {
+            Mail mailForRemove = gameContext.getMailList().stream().filter(mail -> mail.getId() == mailId).collect(Collectors.toList()).stream().findFirst().orElse(null);
+            if (mailForRemove == null) {
+                log.error("Not found mailId(" + mailId + ") in mail list");
+            } else {
+                if (mailForRemove.getMailType() == MailType.AUCTION) {
+                    String[] subjectArray = mailForRemove.getSubject().split(":");
+                    String[] bodyArray = mailForRemove.getBody().split(":");
+                    int itemId = Integer.parseInt(subjectArray[0]);
+                    int action = Integer.parseInt(subjectArray[2]);
+                    int count = Integer.parseInt(subjectArray[4]);
+                    int cost = Integer.parseInt(bodyArray[2]) / count;
+                    String actionString = null;
+                    if (action == 1) {
+                        actionString = "buy";
+                    } else if (action == 2) {
+                        actionString = "sell";
+                    }
+
+                    if (actionString != null) {
+                        tradeHistoryRecordRepository.save(new TradeHistoryRecord(itemId, packet.getTimestamp(), actionString, count, cost));
+                    }
+                }
+
+
+                gameContext.getMailList().remove(mailForRemove);
+            }
+        }
+
+    }
+
+    private void smsgMailListResult(Packet packet) throws IOException {
+        List<Mail> mailList = new ArrayList<>();
+        DataInputStream dis = packet.getDataInputStream();
+        int totalMailCount = Utils.readIntReverted(dis);
+        byte mailCount = dis.readByte();
+        for (int i = 0; i < mailCount; i++) {
+            short msgSize = Utils.readShortReverted(dis);
+            int mailId = Utils.readIntReverted(dis);
+            MailType mailType = MailType.getMailTypeByCode(dis.readByte());
+            long playerGUID = 0;
+            int entry = 0;
+            switch (mailType) {
+                case NORMAL:
+                    playerGUID = Utils.readLongReverted(dis);
+                    break;
+                case CREATURE:
+                case GAMEOBJECT:
+                case ITEM:
+                case AUCTION:
+                    entry = Utils.readIntReverted(dis);
+                    break;
+            }
+            int cod = Utils.readIntReverted(dis);
+            int packageId = Utils.readIntReverted(dis);
+            int stationery = Utils.readIntReverted(dis);
+            int money = Utils.readIntReverted(dis);
+            int flags = Utils.readIntReverted(dis);
+            int time = Utils.readIntReverted(dis);
+            int templateId = Utils.readIntReverted(dis);
+            String subject = Utils.readCString(dis);
+            String body = Utils.readCString(dis).trim();
+
+            int packageItemCount = dis.readByte();
+            List<MailItem> attachedItems = new ArrayList<>();
+            for (int j = 0; j < packageItemCount; j++) {
+                byte itemIndex = dis.readByte();
+                int guid = Utils.readIntReverted(dis);
+                int itemId = Utils.readIntReverted(dis);
+                for (int k = 0; k < 7; k++) {
+                    dis.skip(12);
+                }
+                dis.skip(8);
+                int itemCount = Utils.readIntReverted(dis);
+                dis.skip(13);
+                attachedItems.add(new MailItem(guid, itemId, itemCount));
+            }
+            mailList.add(new Mail(mailId, msgSize, mailType, playerGUID, entry, cod, packageId, stationery, money, flags,
+                    time, templateId, subject, body, attachedItems));
+        }
+
+        gameContext.setMailList(mailList);
     }
 
     private void cmsgAuctionListItems(Packet packet) throws IOException {
@@ -149,7 +263,7 @@ public class PacketHandler {
             List<ItemHistory> itemHistoryList = new ArrayList<>();
             for (ItemStat itemStat : itemStatList) {
                 Integer minBuyout = (gameContext.getAuctionFaction() == AuctionFaction.ALLIANCE) ?
-                itemStat.getAllianceAuctionInfo().getMinBuyout() : itemStat.getHordeAuctionInfo().getMinBuyout();
+                        itemStat.getAllianceAuctionInfo().getMinBuyout() : itemStat.getHordeAuctionInfo().getMinBuyout();
 
                 itemHistoryList.add(new ItemHistory(itemStat.getId(), minBuyout, new Timestamp(gameContext.getTimestamp().getTime())));
             }

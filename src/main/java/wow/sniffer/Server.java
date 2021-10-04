@@ -10,7 +10,6 @@ import wow.sniffer.net.PacketHandler;
 
 import java.io.DataInputStream;
 import java.io.EOFException;
-import java.io.IOException;
 import java.net.Inet4Address;
 import java.net.ServerSocket;
 import java.net.Socket;
