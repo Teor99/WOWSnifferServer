@@ -12,7 +12,6 @@ import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
 
-//@EnableAutoConfiguration
 @SpringBootApplication
 public class Server implements CommandLineRunner {
 
@@ -29,11 +28,9 @@ public class Server implements CommandLineRunner {
             try (ServerSocket serverSocket = new ServerSocket(6666)) {
                 try (Socket clientSocket = serverSocket.accept()) {
                     System.out.println("new connection found");
-                    System.out.println();
                     packetHandler.processInputStream(new DataInputStream(clientSocket.getInputStream()));
                 } catch (EOFException ignored) {
                     System.err.println("connection closed");
-                    System.err.println();
                 }
             }
         }

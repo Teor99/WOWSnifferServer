@@ -1,13 +1,15 @@
 package wow.sniffer.game;
 
+import java.util.Date;
+
 public class AuctionRecord {
     private final int id;
-    private final int timestamp;
+    private final Date timestamp;
     private final int count;
     private final int buyout;
     private final String factionName;
 
-    public AuctionRecord(int id, int timestamp, int count, int buyout, String factionName) {
+    public AuctionRecord(int id, Date timestamp, int count, int buyout, String factionName) {
         this.id = id;
         this.timestamp = timestamp;
         this.count = count;
@@ -15,7 +17,7 @@ public class AuctionRecord {
         this.factionName = factionName;
     }
 
-    public int getTimestamp() {
+    public Date getTimestamp() {
         return timestamp;
     }
 

@@ -4,15 +4,16 @@ import wow.sniffer.Utils;
 
 import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
+import java.util.Date;
 
 public class Packet {
     private final int opcode;
     private final int size;
-    private final int timestamp;
+    private final Date timestamp;
     private final byte type;
     private final byte[] data;
 
-    public Packet(int opcode, int size, int timestamp, byte type, byte[] data) {
+    public Packet(int opcode, int size, Date timestamp, byte type, byte[] data) {
         this.opcode = opcode;
         this.size = size;
         this.timestamp = timestamp;
@@ -50,7 +51,7 @@ public class Packet {
         return size;
     }
 
-    public int getTimestamp() {
+    public Date getTimestamp() {
         return timestamp;
     }
 

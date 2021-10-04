@@ -1,6 +1,7 @@
 package wow.sniffer.game;
 
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
 public class GameContext {
@@ -8,7 +9,7 @@ public class GameContext {
     private List<Character> loginChamberCharList;
     private Character character;
     private final List<AuctionRecord> auctionRecords = new ArrayList<>();
-    private int timestamp;
+    private Date timestamp;
     private int auctionHouseId;
 
     public Character getCharacter() {
@@ -19,7 +20,7 @@ public class GameContext {
         return auctionRecords;
     }
 
-    public int getTimestamp() {
+    public Date getTimestamp() {
         return timestamp;
     }
 
@@ -35,7 +36,7 @@ public class GameContext {
         throw new IllegalArgumentException("Unknown auction faction id: " + auctionHouseId);
     }
 
-    public void setTimestamp(int timestamp) {
+    public void setTimestamp(Date timestamp) {
         this.timestamp = timestamp;
     }
 

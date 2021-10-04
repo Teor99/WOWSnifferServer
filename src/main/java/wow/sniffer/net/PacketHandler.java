@@ -1,18 +1,20 @@
 package wow.sniffer.net;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Component;
 import wow.sniffer.Utils;
-import wow.sniffer.game.AuctionRecord;
+import wow.sniffer.game.*;
 import wow.sniffer.game.Character;
-import wow.sniffer.game.GameContext;
-import wow.sniffer.game.ItemStat;
+import wow.sniffer.game.entity.ItemAuctionInfo;
+import wow.sniffer.game.entity.ItemHistory;
+import wow.sniffer.game.entity.ItemStat;
+import wow.sniffer.repos.ItemHistoryRepository;
 import wow.sniffer.repos.ItemStatRepository;
 
 import java.io.DataInputStream;
 import java.io.EOFException;
 import java.io.IOException;
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -23,6 +25,8 @@ import static wow.sniffer.net.Opcode.*;
 public class PacketHandler {
     @Autowired
     private ItemStatRepository itemStatRepository;
+    @Autowired
+    private ItemHistoryRepository itemHistoryRepository;
 
     private DataInputStream dis;
     private GameContext gameContext;
@@ -48,7 +52,7 @@ public class PacketHandler {
     private Packet readPacket() throws IOException {
         int packetOpcode = Utils.readIntReverted(dis);
         int packetSize = Utils.readIntReverted(dis);
-        int timestamp = Utils.readIntReverted(dis);
+        Date timestamp = new Date((long)Utils.readIntReverted(dis) * 1000);
         byte packetType = dis.readByte();
         byte[] packetData = null;
 
@@ -107,7 +111,6 @@ public class PacketHandler {
 
         gameContext.setAuctionHouseId(ahId);
 
-        System.out.println();
         String descr = getAuctionHouseDescription(ahId);
         System.out.println("Auction house id: " + ahId + " (" + descr + ")");
     }
@@ -128,8 +131,6 @@ public class PacketHandler {
     }
 
     private void smsgAuctionListResult(Packet packet) throws IOException {
-//        System.out.println();
-//        System.out.println("Auction result list func begin, game context records: " + gameContext.getAuctionRecords().size());
         DataInputStream dis = packet.getDataInputStream();
         int count = Utils.readIntReverted(dis);
         if (count == 0) return;
@@ -153,9 +154,16 @@ public class PacketHandler {
 
         if (totalItemCount == gameContext.getAuctionRecords().size()) {
             List<ItemStat> itemStatList = getItemStatListFromAuctionRecordsList(gameContext.getAuctionRecords());
-            System.out.println();
-            System.out.println("New item stat found(" + itemStatList.size() + "):");
-            itemStatList.forEach(System.out::println);
+            System.out.println("Update item stat, count: " + itemStatList.size());
+            List<ItemHistory> itemHistoryList = new ArrayList<>();
+            for (ItemStat itemStat : itemStatList) {
+                Integer minBuyout = (gameContext.getFaction().equals("alliance")) ?
+                itemStat.getAllianceAuctionInfo().getMinBuyout() : itemStat.getHordeAuctionInfo().getMinBuyout();
+
+                itemHistoryList.add(new ItemHistory(itemStat.getId(), minBuyout, new Timestamp(gameContext.getTimestamp().getTime())));
+            }
+
+            itemHistoryRepository.saveAll(itemHistoryList);
             itemStatRepository.saveAll(itemStatList);
         }
     }
@@ -167,23 +175,35 @@ public class PacketHandler {
         while (!tmpList.isEmpty()) {
             List<AuctionRecord> listToRemove = new ArrayList<>();
             AuctionRecord auctionRecord = tmpList.get(0);
-            ItemStat itemStat = new ItemStat(auctionRecord.getId());
+
+            ItemStat itemStat = itemStatRepository.findById(auctionRecord.getId()).orElse(new ItemStat(auctionRecord.getId()));
+            ItemAuctionInfo itemAuctionInfo = new ItemAuctionInfo();
+
+            if (gameContext.getFaction().equals("alliance")) {
+                itemStat.setAllianceAuctionInfo(itemAuctionInfo);
+            } else {
+                itemStat.setHordeAuctionInfo(itemAuctionInfo);
+            }
+
+            // init
+            itemAuctionInfo.setTotalCount(0);
+            itemAuctionInfo.setMinBuyout(0);
+            itemAuctionInfo.setAuctionCount(0);
+
             for (AuctionRecord ar : tmpList) {
                 if (itemStat.getId() == ar.getId()) {
                     // total count
-                    itemStat.setTotalCount(itemStat.getTotalCount() + ar.getCount());
+                    itemAuctionInfo.setTotalCount(itemAuctionInfo.getTotalCount() + ar.getCount());
                     // auction count
-                    itemStat.setAuctionCount(itemStat.getAuctionCount() + 1);
+                    itemAuctionInfo.setAuctionCount(itemAuctionInfo.getAuctionCount() + 1);
                     // min buyout
-                    if (itemStat.getMinBuyout() == 0) {
-                        itemStat.setMinBuyout(ar.getBuyoutPerItem());
+                    if (itemAuctionInfo.getMinBuyout() == 0) {
+                        itemAuctionInfo.setMinBuyout(ar.getBuyoutPerItem());
                     } else if (ar.getBuyoutPerItem() != 0) {
-                        itemStat.setMinBuyout(Math.min(itemStat.getMinBuyout(), ar.getBuyoutPerItem()));
+                        itemAuctionInfo.setMinBuyout(Math.min(itemAuctionInfo.getMinBuyout(), ar.getBuyoutPerItem()));
                     }
                     // timestamp
-                    itemStat.setTimestamp(new Date((long)auctionRecord.getTimestamp() * 1000));
-                    // faction
-                    itemStat.setFaction(gameContext.getFaction());
+                    itemAuctionInfo.setTimestamp(auctionRecord.getTimestamp());
 
                     listToRemove.add(ar);
                 }
@@ -210,7 +230,6 @@ public class PacketHandler {
 
         gameContext.getCharacter().setSpellList(spellList);
 
-        System.out.println();
         System.out.println("Known spells(" + spellList.size() + "):");
         System.out.println(spellList);
     }
@@ -221,7 +240,6 @@ public class PacketHandler {
         for (Character character : gameContext.getLoginChamberCharList()) {
             if (character.getGuid() == guid) {
                 gameContext.setCharacter(character);
-                System.out.println();
                 System.out.println("Login with character:");
                 System.out.println(character);
                 return;
@@ -234,7 +252,6 @@ public class PacketHandler {
     private void smsgEnumCharactersResult(Packet packet) throws IOException {
         List<Character> charList = new ArrayList<>();
 
-        System.out.println();
         System.out.println("Login chamber character list:");
 
         DataInputStream dis = packet.getDataInputStream();
@@ -259,7 +276,6 @@ public class PacketHandler {
         DataInputStream dis = packet.getDataInputStream();
         dis.skip(8);
         gameContext.setAccountName(Utils.readCString(dis));
-        System.out.println();
         System.out.println("Client auth request with account: " + gameContext.getAccountName());
     }
 }
