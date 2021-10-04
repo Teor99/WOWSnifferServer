@@ -10,7 +10,7 @@ public class GameContext {
     private Character character;
     private final List<AuctionRecord> auctionRecords = new ArrayList<>();
     private Date timestamp;
-    private int auctionHouseId;
+    private AuctionFaction auctionFaction;
 
     public Character getCharacter() {
         return character;
@@ -24,28 +24,16 @@ public class GameContext {
         return timestamp;
     }
 
-    public String getFaction() {
-        switch (auctionHouseId) {
-            case 1:
-            case 2:
-                return "alliance";
-            case 5:
-                return "horde";
-        }
-
-        throw new IllegalArgumentException("Unknown auction faction id: " + auctionHouseId);
-    }
-
     public void setTimestamp(Date timestamp) {
         this.timestamp = timestamp;
     }
 
-    public int getAuctionHouseId() {
-        return auctionHouseId;
+    public AuctionFaction getAuctionFaction() {
+        return auctionFaction;
     }
 
-    public void setAuctionHouseId(int auctionHouseId) {
-        this.auctionHouseId = auctionHouseId;
+    public void setAuctionFaction(AuctionFaction auctionFaction) {
+        this.auctionFaction = auctionFaction;
     }
 
     public void setCharacter(Character character) {

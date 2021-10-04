@@ -1,10 +1,14 @@
 package wow.sniffer.net;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import wow.sniffer.Utils;
-import wow.sniffer.game.*;
+import wow.sniffer.game.AuctionFaction;
+import wow.sniffer.game.AuctionRecord;
 import wow.sniffer.game.Character;
+import wow.sniffer.game.GameContext;
 import wow.sniffer.game.entity.ItemAuctionInfo;
 import wow.sniffer.game.entity.ItemHistory;
 import wow.sniffer.game.entity.ItemStat;
@@ -23,6 +27,9 @@ import static wow.sniffer.net.Opcode.*;
 
 @Component
 public class PacketHandler {
+
+    private final Logger log = LoggerFactory.getLogger(PacketHandler.class);
+
     @Autowired
     private ItemStatRepository itemStatRepository;
     @Autowired
@@ -35,7 +42,7 @@ public class PacketHandler {
     }
 
     public void processInputStream(DataInputStream dis) throws IOException {
-        System.out.println("Begin of data stream processing");
+        log.info("Begin of data stream processing");
         this.dis = dis;
         gameContext = new GameContext();
         while (true) {
@@ -43,8 +50,8 @@ public class PacketHandler {
                 Packet packet = readPacket();
                 handlePacket(packet);
             } catch (EOFException e) {
-                System.err.println("End of data stream processing");
-                break;
+                log.warn("End of data stream processing");
+                throw e;
             }
         }
     }
@@ -86,7 +93,7 @@ public class PacketHandler {
                 smsgAuctionHello(packet);
             }
         } catch (IOException e) {
-            System.err.println(packet);
+            log.warn(String.valueOf(packet));
             e.printStackTrace();
         }
     }
@@ -98,7 +105,7 @@ public class PacketHandler {
         if (savedAuctionRecords == 0) {
             gameContext.getAuctionRecords().clear();
         } else if (savedAuctionRecords != gameContext.getAuctionRecords().size()) {
-            System.err.println("auction records count not equals: context - "
+            log.warn("auction records count not equals: context - "
                     + gameContext.getAuctionRecords().size()
                     + " expected - " + savedAuctionRecords);
         }
@@ -109,25 +116,9 @@ public class PacketHandler {
         dis.skip(8);
         int ahId = Utils.readIntReverted(dis);
 
-        gameContext.setAuctionHouseId(ahId);
+        gameContext.setAuctionFaction(AuctionFaction.getFactionByCode(ahId));
 
-        String descr = getAuctionHouseDescription(ahId);
-        System.out.println("Auction house id: " + ahId + " (" + descr + ")");
-    }
-
-    private String getAuctionHouseDescription(int ahId) {
-        switch (ahId) {
-            case 1:
-                return "Alliance";
-            case 2:
-                return "Alliance Ironforge";
-            case 5:
-                return "Horde Thunder Bluff";
-            default:
-                System.err.println("Unknown auction house id: " + ahId);
-        }
-
-        return null;
+        log.info("Set auction faction as: " + gameContext.getAuctionFaction().name());
     }
 
     private void smsgAuctionListResult(Packet packet) throws IOException {
@@ -143,7 +134,7 @@ public class PacketHandler {
             dis.skip(24);
             int buyout = Utils.readIntReverted(dis);
             dis.skip(16);
-            gameContext.getAuctionRecords().add(new AuctionRecord(id, packet.getTimestamp(), itemCount, buyout, gameContext.getFaction()));
+            gameContext.getAuctionRecords().add(new AuctionRecord(id, packet.getTimestamp(), itemCount, buyout));
         }
 
         int totalItemCount = Utils.readIntReverted(dis);
@@ -154,10 +145,10 @@ public class PacketHandler {
 
         if (totalItemCount == gameContext.getAuctionRecords().size()) {
             List<ItemStat> itemStatList = getItemStatListFromAuctionRecordsList(gameContext.getAuctionRecords());
-            System.out.println("Update item stat, count: " + itemStatList.size());
+            log.info("Update item stat, count: " + itemStatList.size());
             List<ItemHistory> itemHistoryList = new ArrayList<>();
             for (ItemStat itemStat : itemStatList) {
-                Integer minBuyout = (gameContext.getFaction().equals("alliance")) ?
+                Integer minBuyout = (gameContext.getAuctionFaction() == AuctionFaction.ALLIANCE) ?
                 itemStat.getAllianceAuctionInfo().getMinBuyout() : itemStat.getHordeAuctionInfo().getMinBuyout();
 
                 itemHistoryList.add(new ItemHistory(itemStat.getId(), minBuyout, new Timestamp(gameContext.getTimestamp().getTime())));
@@ -179,7 +170,7 @@ public class PacketHandler {
             ItemStat itemStat = itemStatRepository.findById(auctionRecord.getId()).orElse(new ItemStat(auctionRecord.getId()));
             ItemAuctionInfo itemAuctionInfo = new ItemAuctionInfo();
 
-            if (gameContext.getFaction().equals("alliance")) {
+            if (gameContext.getAuctionFaction() == AuctionFaction.ALLIANCE) {
                 itemStat.setAllianceAuctionInfo(itemAuctionInfo);
             } else {
                 itemStat.setHordeAuctionInfo(itemAuctionInfo);
@@ -230,8 +221,7 @@ public class PacketHandler {
 
         gameContext.getCharacter().setSpellList(spellList);
 
-        System.out.println("Known spells(" + spellList.size() + "):");
-        System.out.println(spellList);
+        log.info("Known spells: " + spellList.size());
     }
 
     private void cmsgPlayerLogin(Packet packet) throws IOException {
@@ -240,8 +230,8 @@ public class PacketHandler {
         for (Character character : gameContext.getLoginChamberCharList()) {
             if (character.getGuid() == guid) {
                 gameContext.setCharacter(character);
-                System.out.println("Login with character:");
-                System.out.println(character);
+                log.info("Login with character:");
+                log.info(String.valueOf(character));
                 return;
             }
         }
@@ -252,7 +242,7 @@ public class PacketHandler {
     private void smsgEnumCharactersResult(Packet packet) throws IOException {
         List<Character> charList = new ArrayList<>();
 
-        System.out.println("Login chamber character list:");
+        log.info("Login chamber character list:");
 
         DataInputStream dis = packet.getDataInputStream();
         byte count = dis.readByte();
@@ -265,7 +255,7 @@ public class PacketHandler {
             byte level = dis.readByte();
             dis.skip(252);
             Character character = new Character(guid, charName, raceCode, classCode, level);
-            System.out.println(character);
+            log.info(String.valueOf(character));
             charList.add(character);
         }
 
@@ -276,6 +266,6 @@ public class PacketHandler {
         DataInputStream dis = packet.getDataInputStream();
         dis.skip(8);
         gameContext.setAccountName(Utils.readCString(dis));
-        System.out.println("Client auth request with account: " + gameContext.getAccountName());
+        log.info("Client auth request with account: " + gameContext.getAccountName());
     }
 }

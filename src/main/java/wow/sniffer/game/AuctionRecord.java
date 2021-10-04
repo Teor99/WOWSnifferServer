@@ -7,14 +7,12 @@ public class AuctionRecord {
     private final Date timestamp;
     private final int count;
     private final int buyout;
-    private final String factionName;
 
-    public AuctionRecord(int id, Date timestamp, int count, int buyout, String factionName) {
+    public AuctionRecord(int id, Date timestamp, int count, int buyout) {
         this.id = id;
         this.timestamp = timestamp;
         this.count = count;
         this.buyout = buyout;
-        this.factionName = factionName;
     }
 
     public Date getTimestamp() {
