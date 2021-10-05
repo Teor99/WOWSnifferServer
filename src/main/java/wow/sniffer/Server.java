@@ -28,7 +28,7 @@ public class Server implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
-        try (ServerSocket serverSocket = new ServerSocket(6666, 0 , Inet4Address.getByName("127.0.0.1"))) {
+        try (ServerSocket serverSocket = new ServerSocket(6666, 0, Inet4Address.getByName("127.0.0.1"))) {
             while (true) {
                 log.info("Server start listen on: " + serverSocket.getLocalSocketAddress());
                 try (Socket clientSocket = serverSocket.accept()) {

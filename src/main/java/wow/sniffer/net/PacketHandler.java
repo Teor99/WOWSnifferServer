@@ -126,7 +126,7 @@ public class PacketHandler {
         int actionCode = Utils.readIntReverted(dis);
         int errorCode = Utils.readIntReverted(dis);
 
-        log.info("mailId: " + mailId + " action: " + actionCode + " error: " + errorCode);
+//        log.info("mailId: " + mailId + " action: " + actionCode + " error: " + errorCode);
 
         if (actionCode == 4 && errorCode == 0) {
             Mail mailForRemove = gameContext.getMailList().stream().filter(mail -> mail.getId() == mailId).collect(Collectors.toList()).stream().findFirst().orElse(null);
@@ -270,8 +270,10 @@ public class PacketHandler {
 
             itemHistoryRepository.saveAll(itemHistoryList);
             itemStatRepository.saveAll(itemStatList);
+            itemStatRepository.removeOldRecords();
         }
     }
+
 
     private List<ItemStat> getItemStatListFromAuctionRecordsList(List<AuctionRecord> auctionRecords) {
         List<AuctionRecord> tmpList = new ArrayList<>(auctionRecords);
