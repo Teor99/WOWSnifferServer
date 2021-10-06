@@ -3,8 +3,8 @@ package wow.sniffer.net;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
-import wow.sniffer.Utils;
 import wow.sniffer.game.AuctionFaction;
 import wow.sniffer.game.AuctionRecord;
 import wow.sniffer.game.Character;
@@ -20,19 +20,19 @@ import wow.sniffer.repos.ItemHistoryRepository;
 import wow.sniffer.repos.ItemStatRepository;
 import wow.sniffer.repos.TradeHistoryRecordRepository;
 
-import java.io.DataInputStream;
-import java.io.EOFException;
 import java.io.IOException;
-import java.sql.Timestamp;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
+import java.util.concurrent.BlockingQueue;
 import java.util.stream.Collectors;
 
 @Component
-public class PacketHandler {
+@Scope("prototype")
+public class PacketHandler extends Thread {
 
     private final Logger log = LoggerFactory.getLogger(PacketHandler.class);
+
+    private BlockingQueue<Packet> queue;
 
     @Autowired
     private ItemStatRepository itemStatRepository;
@@ -41,43 +41,24 @@ public class PacketHandler {
     @Autowired
     private TradeHistoryRecordRepository tradeHistoryRecordRepository;
 
-    private DataInputStream dis;
     private GameContext gameContext;
 
     public PacketHandler() {
     }
 
-    public void processInputStream(DataInputStream dis) throws IOException {
-        log.info("Begin of data stream processing");
-        this.dis = dis;
+    @Override
+    public void run() {
+        log.info("Begin game data processing");
         gameContext = new GameContext();
-        while (true) {
-            try {
-                Packet packet = readPacket();
+
+        try {
+            while (!isInterrupted()) {
+                Packet packet = queue.take();
                 handlePacket(packet);
-            } catch (EOFException e) {
-                log.warn("End of data stream processing");
-                throw e;
             }
+        } catch (InterruptedException ignored) {
         }
-    }
-
-    private Packet readPacket() throws IOException {
-        int packetOpcode = Utils.readIntReverted(dis);
-        int packetSize = Utils.readIntReverted(dis);
-        Date timestamp = new Date((long) Utils.readIntReverted(dis) * 1000);
-        byte packetType = dis.readByte();
-        byte[] packetData = null;
-
-        if (packetSize > 0) {
-            packetData = new byte[packetSize];
-            for (int i = 0; i < packetData.length; i++) {
-                packetData[i] = dis.readByte();
-            }
-        }
-
-        gameContext.setTimestamp(timestamp);
-        return new Packet(packetOpcode, packetSize, timestamp, packetType, packetData);
+        log.info("End of game data processing");
     }
 
     private void handlePacket(Packet packet) {
@@ -114,17 +95,16 @@ public class PacketHandler {
                     break;
             }
         } catch (IOException e) {
-            log.warn(String.valueOf(packet));
+            log.error(String.valueOf(packet));
             e.printStackTrace();
         }
 
     }
 
     private void smsgMailCommandResult(Packet packet) throws IOException {
-        DataInputStream dis = packet.getDataInputStream();
-        int mailId = Utils.readIntReverted(dis);
-        int actionCode = Utils.readIntReverted(dis);
-        int errorCode = Utils.readIntReverted(dis);
+        int mailId = packet.readIntE();
+        int actionCode = packet.readIntE();
+        int errorCode = packet.readIntE();
 
 //        log.info("mailId: " + mailId + " action: " + actionCode + " error: " + errorCode);
 
@@ -152,7 +132,6 @@ public class PacketHandler {
                     }
                 }
 
-
                 gameContext.getMailList().remove(mailForRemove);
             }
         }
@@ -161,48 +140,47 @@ public class PacketHandler {
 
     private void smsgMailListResult(Packet packet) throws IOException {
         List<Mail> mailList = new ArrayList<>();
-        DataInputStream dis = packet.getDataInputStream();
-        int totalMailCount = Utils.readIntReverted(dis);
-        byte mailCount = dis.readByte();
+        int totalMailCount = packet.readIntE();
+        byte mailCount = packet.readByte();
         for (int i = 0; i < mailCount; i++) {
-            short msgSize = Utils.readShortReverted(dis);
-            int mailId = Utils.readIntReverted(dis);
-            MailType mailType = MailType.getMailTypeByCode(dis.readByte());
+            short msgSize = packet.readShortE();
+            int mailId = packet.readIntE();
+            MailType mailType = MailType.getMailTypeByCode(packet.readByte());
             long playerGUID = 0;
             int entry = 0;
             switch (mailType) {
                 case NORMAL:
-                    playerGUID = Utils.readLongReverted(dis);
+                    playerGUID = packet.readLongE();
                     break;
                 case CREATURE:
                 case GAMEOBJECT:
                 case ITEM:
                 case AUCTION:
-                    entry = Utils.readIntReverted(dis);
+                    entry = packet.readIntE();
                     break;
             }
-            int cod = Utils.readIntReverted(dis);
-            int packageId = Utils.readIntReverted(dis);
-            int stationery = Utils.readIntReverted(dis);
-            int money = Utils.readIntReverted(dis);
-            int flags = Utils.readIntReverted(dis);
-            int time = Utils.readIntReverted(dis);
-            int templateId = Utils.readIntReverted(dis);
-            String subject = Utils.readCString(dis);
-            String body = Utils.readCString(dis).trim();
+            int cod = packet.readIntE();
+            int packageId = packet.readIntE();
+            int stationery = packet.readIntE();
+            int money = packet.readIntE();
+            int flags = packet.readIntE();
+            int time = packet.readIntE();
+            int templateId = packet.readIntE();
+            String subject = packet.readCString();
+            String body = packet.readCString().trim();
 
-            int packageItemCount = dis.readByte();
+            int packageItemCount = packet.readByte();
             List<MailItem> attachedItems = new ArrayList<>();
             for (int j = 0; j < packageItemCount; j++) {
-                byte itemIndex = dis.readByte();
-                int guid = Utils.readIntReverted(dis);
-                int itemId = Utils.readIntReverted(dis);
+                byte itemIndex = packet.readByte();
+                int guid = packet.readIntE();
+                int itemId = packet.readIntE();
                 for (int k = 0; k < 7; k++) {
-                    dis.skip(12);
+                    packet.skip(12);
                 }
-                dis.skip(8);
-                int itemCount = Utils.readIntReverted(dis);
-                dis.skip(13);
+                packet.skip(8);
+                int itemCount = packet.readIntE();
+                packet.skip(13);
                 attachedItems.add(new MailItem(guid, itemId, itemCount));
             }
             mailList.add(new Mail(mailId, msgSize, mailType, playerGUID, entry, cod, packageId, stationery, money, flags,
@@ -213,22 +191,20 @@ public class PacketHandler {
     }
 
     private void cmsgAuctionListItems(Packet packet) throws IOException {
-        DataInputStream dis = packet.getDataInputStream();
-        dis.skip(8);
-        int savedAuctionRecords = Utils.readIntReverted(dis);
+        packet.skip(8);
+        int savedAuctionRecords = packet.readIntE();
         if (savedAuctionRecords == 0) {
             gameContext.getAuctionRecords().clear();
         } else if (savedAuctionRecords != gameContext.getAuctionRecords().size()) {
-            log.warn("auction records count not equals: context - "
+            log.info("auction records count not equals: context - "
                     + gameContext.getAuctionRecords().size()
                     + " expected - " + savedAuctionRecords);
         }
     }
 
     private void smsgAuctionHello(Packet packet) throws IOException {
-        DataInputStream dis = packet.getDataInputStream();
-        dis.skip(8);
-        int ahId = Utils.readIntReverted(dis);
+        packet.skip(8);
+        int ahId = packet.readIntE();
 
         gameContext.setAuctionFaction(AuctionFaction.getFactionByCode(ahId));
 
@@ -236,26 +212,25 @@ public class PacketHandler {
     }
 
     private void smsgAuctionListResult(Packet packet) throws IOException {
-        DataInputStream dis = packet.getDataInputStream();
-        int count = Utils.readIntReverted(dis);
+        int count = packet.readIntE();
         if (count == 0) return;
 
         for (int i = 0; i < count; i++) {
-            dis.skip(4);
-            int id = Utils.readIntReverted(dis);
-            dis.skip(92);
-            int itemCount = Utils.readIntReverted(dis);
-            dis.skip(24);
-            int buyout = Utils.readIntReverted(dis);
-            dis.skip(16);
+            packet.skip(4);
+            int id = packet.readIntE();
+            packet.skip(92);
+            int itemCount = packet.readIntE();
+            packet.skip(24);
+            int buyout = packet.readIntE();
+            packet.skip(16);
             gameContext.getAuctionRecords().add(new AuctionRecord(id, packet.getTimestamp(), itemCount, buyout));
         }
 
-        int totalItemCount = Utils.readIntReverted(dis);
+        int totalItemCount = packet.readIntE();
         if (totalItemCount == 0) {
             throw new IllegalArgumentException("Auction list result total count 0, but count: " + count);
         }
-        dis.skip(4);
+        packet.skip(4);
 
         if (totalItemCount == gameContext.getAuctionRecords().size()) {
             List<ItemStat> itemStatList = getItemStatListFromAuctionRecordsList(gameContext.getAuctionRecords());
@@ -265,7 +240,7 @@ public class PacketHandler {
                 Integer minBuyout = (gameContext.getAuctionFaction() == AuctionFaction.ALLIANCE) ?
                         itemStat.getAllianceAuctionInfo().getMinBuyout() : itemStat.getHordeAuctionInfo().getMinBuyout();
 
-                itemHistoryList.add(new ItemHistory(itemStat.getId(), minBuyout, new Timestamp(gameContext.getTimestamp().getTime())));
+                itemHistoryList.add(new ItemHistory(itemStat.getId(), minBuyout, packet.getTimestamp()));
             }
 
             itemHistoryRepository.saveAll(itemHistoryList);
@@ -326,12 +301,11 @@ public class PacketHandler {
 
     private void smsgSendKnownSpells(Packet packet) throws IOException {
         List<Integer> spellList = new ArrayList<>();
-        DataInputStream dis = packet.getDataInputStream();
-        dis.skip(1);
-        short count = Utils.readShortReverted(dis);
+        packet.skip(1);
+        short count = packet.readShortE();
         for (int i = 0; i < count; i++) {
-            int spellId = Utils.readIntReverted(dis);
-            dis.skip(2);
+            int spellId = packet.readIntE();
+            packet.skip(2);
             spellList.add(spellId);
         }
 
@@ -341,8 +315,7 @@ public class PacketHandler {
     }
 
     private void cmsgPlayerLogin(Packet packet) throws IOException {
-        DataInputStream dis = packet.getDataInputStream();
-        long guid = Utils.readLongReverted(dis);
+        long guid = packet.readLongE();
         for (Character character : gameContext.getLoginChamberCharList()) {
             if (character.getGuid() == guid) {
                 gameContext.setCharacter(character);
@@ -360,16 +333,15 @@ public class PacketHandler {
 
         log.info("Login chamber character list:");
 
-        DataInputStream dis = packet.getDataInputStream();
-        byte count = dis.readByte();
+        byte count = packet.readByte();
         for (int i = 0; i < count; i++) {
-            long guid = Utils.readLongReverted(dis);
-            String charName = Utils.readCString(dis);
-            byte raceCode = dis.readByte();
-            byte classCode = dis.readByte();
-            dis.skip(6);
-            byte level = dis.readByte();
-            dis.skip(252);
+            long guid = packet.readLongE();
+            String charName = packet.readCString();
+            byte raceCode = packet.readByte();
+            byte classCode = packet.readByte();
+            packet.skip(6);
+            byte level = packet.readByte();
+            packet.skip(252);
             Character character = new Character(guid, charName, raceCode, classCode, level);
             log.info(String.valueOf(character));
             charList.add(character);
@@ -379,9 +351,18 @@ public class PacketHandler {
     }
 
     private void cmsgAuthSession(Packet packet) throws IOException {
-        DataInputStream dis = packet.getDataInputStream();
-        dis.skip(8);
-        gameContext.setAccountName(Utils.readCString(dis));
+        packet.skip(8);
+        gameContext.setAccountName(packet.readCString());
         log.info("Client auth request with account: " + gameContext.getAccountName());
     }
+
+    public BlockingQueue<Packet> getQueue() {
+        return queue;
+    }
+
+    public void setQueue(BlockingQueue<Packet> queue) {
+        this.queue = queue;
+    }
+
+
 }

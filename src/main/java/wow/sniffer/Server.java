@@ -6,13 +6,18 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.ApplicationContext;
+import wow.sniffer.net.Packet;
 import wow.sniffer.net.PacketHandler;
+import wow.sniffer.net.PacketReader;
 
 import java.io.DataInputStream;
 import java.io.EOFException;
 import java.net.Inet4Address;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 
 @SpringBootApplication
 public class Server implements CommandLineRunner {
@@ -20,7 +25,9 @@ public class Server implements CommandLineRunner {
     private final Logger log = LoggerFactory.getLogger(Server.class);
 
     @Autowired
-    private PacketHandler packetHandler;
+    private ApplicationContext ctx;
+
+    private final BlockingQueue<Packet> queue = new LinkedBlockingQueue<>();
 
     public static void main(String[] args) {
         SpringApplication.run(Server.class, args);
@@ -33,10 +40,22 @@ public class Server implements CommandLineRunner {
                 log.info("Server start listen on: " + serverSocket.getLocalSocketAddress());
                 try (Socket clientSocket = serverSocket.accept()) {
                     log.info("New connection from: " + clientSocket.getRemoteSocketAddress());
+                    PacketHandler packetHandler = ctx.getBean(PacketHandler.class);
+                    packetHandler.setName("PacketHandler");
+                    packetHandler.setQueue(queue);
+                    packetHandler.start();
                     try {
-                        packetHandler.processInputStream(new DataInputStream(clientSocket.getInputStream()));
+                        PacketReader packetReader = new PacketReader(new DataInputStream(clientSocket.getInputStream()));
+                        while (true) {
+                            Packet packet = packetReader.readPacket();
+                            queue.add(packet);
+                        }
                     } catch (EOFException e) {
-                        log.warn("Close connection from: " + clientSocket.getRemoteSocketAddress());
+                        log.info("Close connection from: " + clientSocket.getRemoteSocketAddress());
+                        packetHandler.interrupt();
+                        log.info("Wait while PacketHandler thread stop");
+                        packetHandler.join();
+                        log.info("PacketHandler thread stopped");
                     }
                 }
             }

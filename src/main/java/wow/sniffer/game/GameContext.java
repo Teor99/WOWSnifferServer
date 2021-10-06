@@ -3,7 +3,6 @@ package wow.sniffer.game;
 import wow.sniffer.game.mail.Mail;
 
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 
 public class GameContext {
@@ -11,7 +10,6 @@ public class GameContext {
     private List<Character> loginChamberCharList;
     private Character character;
     private final List<AuctionRecord> auctionRecords = new ArrayList<>();
-    private Date timestamp;
     private AuctionFaction auctionFaction;
     private List<Mail> mailList;
 
@@ -21,14 +19,6 @@ public class GameContext {
 
     public List<AuctionRecord> getAuctionRecords() {
         return auctionRecords;
-    }
-
-    public Date getTimestamp() {
-        return timestamp;
-    }
-
-    public void setTimestamp(Date timestamp) {
-        this.timestamp = timestamp;
     }
 
     public AuctionFaction getAuctionFaction() {

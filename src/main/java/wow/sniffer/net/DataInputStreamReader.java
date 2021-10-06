@@ -1,18 +1,19 @@
-package wow.sniffer;
+package wow.sniffer.net;
 
 import java.io.DataInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 
-public class Utils {
+public class DataInputStreamReader {
     private static final char[] HEX_ARRAY = "0123456789ABCDEF".toCharArray();
-    public static String bytesToHex(byte[] bytes) {
-        char[] hexChars = new char[bytes.length * 2];
-        for (int j = 0; j < bytes.length; j++) {
-            int v = bytes[j] & 0xFF;
-            hexChars[j * 2] = HEX_ARRAY[v >>> 4];
-            hexChars[j * 2 + 1] = HEX_ARRAY[v & 0x0F];
-        }
-        return new String(hexChars);
+    private final DataInputStream dis;
+
+    public DataInputStreamReader(InputStream inputStream) {
+        this.dis = new DataInputStream(inputStream);
+    }
+
+    public int readIntE() throws IOException {
+        return revertInt(dis.readInt());
     }
 
     public static int revertInt(int i) {
@@ -34,23 +35,39 @@ public class Utils {
         return b1 | b2 | b3 | b4;
     }
 
-    public static int readIntReverted(DataInputStream dis) throws IOException {
-        return revertInt(dis.readInt());
+    public byte readByte() throws IOException {
+        return dis.readByte();
     }
 
-    public static String readCString(DataInputStream dis) throws IOException {
-        StringBuilder sb = new StringBuilder();
-
-        while (true) {
-            byte b = dis.readByte();
-            if (b == 0) break;
-            sb.append((char)b);
+    public String bytesToHexString() throws IOException {
+        byte[] bytes = dis.readAllBytes();
+        char[] hexChars = new char[bytes.length * 2];
+        for (int j = 0; j < bytes.length; j++) {
+            int v = bytes[j] & 0xFF;
+            hexChars[j * 2] = HEX_ARRAY[v >>> 4];
+            hexChars[j * 2 + 1] = HEX_ARRAY[v & 0x0F];
         }
-
-        return sb.toString();
+        return new String(hexChars);
     }
 
-    public static long readLongReverted(DataInputStream dis) throws IOException {
+    public short readShortE() throws IOException {
+        return revertShort(dis.readShort());
+    }
+
+    public static short revertShort(short s) {
+        short b1 = (short) (s & 0xFF);
+        short b2 = (short) (s & 0xFF00);
+
+        b1 <<= 8;
+        b2 >>= 8;
+
+        b1 &= 0xFF00L;
+        b2 &= 0xFFL;
+
+        return (short) (b1 | b2);
+    }
+
+    public long readLongE() throws IOException {
         return revertLong(dis.readLong());
     }
 
@@ -85,20 +102,7 @@ public class Utils {
         return b1 | b2 | b3 | b4 | b5 | b6 | b7 | b8;
     }
 
-    public static short readShortReverted(DataInputStream dis) throws IOException {
-        return revertShort(dis.readShort());
-    }
-
-    public static short revertShort(short s) {
-        short b1 = (short) (s & 0xFF);
-        short b2 = (short) (s & 0xFF00);
-
-        b1 <<= 8;
-        b2 >>= 8;
-
-        b1 &= 0xFF00L;
-        b2 &= 0xFFL;
-
-        return (short) (b1 | b2);
+    public void skip(int i) throws IOException {
+        dis.skip(i);
     }
 }

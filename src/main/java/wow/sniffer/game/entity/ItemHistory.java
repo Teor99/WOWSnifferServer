@@ -3,7 +3,6 @@ package wow.sniffer.game.entity;
 import com.sun.istack.NotNull;
 
 import javax.persistence.*;
-import java.sql.Timestamp;
 import java.util.Date;
 
 @Entity
@@ -18,12 +17,12 @@ public class ItemHistory {
     private Integer minBuyout;
     @NotNull
     @Column(columnDefinition = "TIMESTAMP")
-    private Timestamp timestamp;
+    private Date timestamp;
 
     public ItemHistory() {
     }
 
-    public ItemHistory(Integer id, Integer minBuyout, Timestamp timestamp) {
+    public ItemHistory(Integer id, Integer minBuyout, Date timestamp) {
         this.id = id;
         this.minBuyout = minBuyout;
         this.timestamp = timestamp;
@@ -41,7 +40,7 @@ public class ItemHistory {
         return timestamp;
     }
 
-    public void setTimestamp(Timestamp timestamp) {
+    public void setTimestamp(Date timestamp) {
         this.timestamp = timestamp;
     }
 
