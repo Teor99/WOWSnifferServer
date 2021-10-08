@@ -5,23 +5,24 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
+import wow.sniffer.entity.*;
 import wow.sniffer.game.AuctionFaction;
 import wow.sniffer.game.AuctionRecord;
 import wow.sniffer.game.Character;
 import wow.sniffer.game.GameContext;
-import wow.sniffer.game.entity.ItemAuctionInfo;
-import wow.sniffer.game.entity.ItemHistory;
-import wow.sniffer.game.entity.ItemStat;
-import wow.sniffer.game.entity.TradeHistoryRecord;
 import wow.sniffer.game.mail.Mail;
 import wow.sniffer.game.mail.MailItem;
 import wow.sniffer.game.mail.MailType;
-import wow.sniffer.repos.ItemHistoryRepository;
-import wow.sniffer.repos.ItemStatRepository;
-import wow.sniffer.repos.TradeHistoryRecordRepository;
+import wow.sniffer.repo.ItemHistoryRepository;
+import wow.sniffer.repo.ItemProfitActionRepository;
+import wow.sniffer.repo.ItemStatRepository;
+import wow.sniffer.repo.TradeHistoryRecordRepository;
 
 import java.io.IOException;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.stream.Collectors;
@@ -40,6 +41,8 @@ public class PacketHandler extends Thread {
     private ItemHistoryRepository itemHistoryRepository;
     @Autowired
     private TradeHistoryRecordRepository tradeHistoryRecordRepository;
+    @Autowired
+    private ItemProfitActionRepository itemProfitActionRepository;
 
     private GameContext gameContext;
 
@@ -209,9 +212,13 @@ public class PacketHandler extends Thread {
         gameContext.setAuctionFaction(AuctionFaction.getFactionByCode(ahId));
 
         log.info("Set auction faction as: " + gameContext.getAuctionFaction().name());
+
+        itemStatRepository.removeOldRecords();
+        itemProfitActionRepository.removeOldRecords();
     }
 
     private void smsgAuctionListResult(Packet packet) throws IOException {
+        Instant start = Instant.now();
         int count = packet.readIntE();
         if (count == 0) return;
 
@@ -232,21 +239,107 @@ public class PacketHandler extends Thread {
         }
         packet.skip(4);
 
+        boolean isFullScan = totalItemCount > 1000;
+
         if (totalItemCount == gameContext.getAuctionRecords().size()) {
             List<ItemStat> itemStatList = getItemStatListFromAuctionRecordsList(gameContext.getAuctionRecords());
-            log.info("Update item stat, count: " + itemStatList.size());
-            List<ItemHistory> itemHistoryList = new ArrayList<>();
-            for (ItemStat itemStat : itemStatList) {
-                Integer minBuyout = (gameContext.getAuctionFaction() == AuctionFaction.ALLIANCE) ?
-                        itemStat.getAllianceAuctionInfo().getMinBuyout() : itemStat.getHordeAuctionInfo().getMinBuyout();
+            if (isFullScan) {
+                List<ItemHistory> itemHistoryList = new ArrayList<>();
+                for (ItemStat itemStat : itemStatList) {
+                    Integer minBuyout = (gameContext.getAuctionFaction() == AuctionFaction.ALLIANCE) ?
+                            itemStat.getAllianceAuctionInfo().getMinBuyout() : itemStat.getHordeAuctionInfo().getMinBuyout();
 
-                itemHistoryList.add(new ItemHistory(itemStat.getId(), minBuyout, packet.getTimestamp()));
+                    itemHistoryList.add(new ItemHistory(itemStat.getId(), minBuyout, packet.getTimestamp()));
+                }
+                log.info("Update item history from fullscan: " + itemHistoryList.size());
+                itemHistoryRepository.saveAll(itemHistoryList);
             }
 
-            itemHistoryRepository.saveAll(itemHistoryList);
+            log.info("Update item stat, count: " + itemStatList.size());
             itemStatRepository.saveAll(itemStatList);
             itemStatRepository.removeOldRecords();
+
+            log.info("Update item profit records");
+            itemProfitActionRepository.saveAll(calculateProfit(itemStatList));
+            itemProfitActionRepository.removeOldRecords();
+
+            if (isFullScan) {
+                Instant finish = Instant.now();
+                log.info("Full scan package processing took(sec): " + Duration.between(start, finish).toSeconds());
+            }
         }
+    }
+
+    private List<ItemProfitAction> calculateProfit(List<ItemStat> itemsForCalc) {
+        List<ItemProfitAction> resultList = new ArrayList<>();
+        for (ItemStat itemStat : itemsForCalc) {
+            itemProfitActionRepository.removeByItemId(itemStat.getId());
+
+            if (itemStat.getAllianceAuctionInfo() == null || itemStat.getHordeAuctionInfo() == null) {
+                resultList.add(calcEmptyAuctionRecord(itemStat));
+            } else {
+                resultList.add(calcResaleAllianceToHorde(itemStat));
+                resultList.add(calcResaleHordeToAlliance(itemStat));
+            }
+
+        }
+        return resultList;
+    }
+
+    private ItemProfitAction calcEmptyAuctionRecord(ItemStat itemStat) {
+        if (itemStat.getAllianceAuctionInfo() == null && itemStat.getHordeAuctionInfo() == null)
+            throw new IllegalArgumentException("ItemStat with all null records");
+
+        Integer allianceMinBuyout = null;
+        Integer hordeMinBuyout = null;
+        Integer profit = Integer.MAX_VALUE;
+        String action;
+
+        if (itemStat.getAllianceAuctionInfo() != null && itemStat.getHordeAuctionInfo() == null) {
+            action = "EMPTY_AUCTION_HORDE";
+            allianceMinBuyout = itemStat.getAllianceAuctionInfo().getMinBuyout();
+        } else {
+            action = "EMPTY_AUCTION_ALLANCE";
+            hordeMinBuyout = itemStat.getHordeAuctionInfo().getMinBuyout();
+        }
+
+        return new ItemProfitAction(itemStat.getId(), action, allianceMinBuyout, hordeMinBuyout, profit, null, new Date());
+    }
+
+    private ItemProfitAction calcResaleHordeToAlliance(ItemStat itemStat) {
+        Integer allianceMinBuyout = itemStat.getAllianceAuctionInfo().getMinBuyout();
+        Integer hordeMinBuyout = itemStat.getHordeAuctionInfo().getMinBuyout();
+        Integer profit = allianceMinBuyout - hordeMinBuyout;
+        String comment = "Horde " + costToString(hordeMinBuyout) + " -> Alliance " + costToString(allianceMinBuyout);
+
+        return new ItemProfitAction(itemStat.getId(), "RESALE_HORDE_TO_ALLIANCE", allianceMinBuyout, hordeMinBuyout, profit, comment, new Date());
+    }
+
+    public static String costToString(Integer price) {
+        int cooper = price % 100;
+        int silver = (price - cooper) % 10000 / 100;
+        int gold = (price - silver - cooper) / 10000;
+        StringBuilder sb = new StringBuilder();
+        if (gold != 0) {
+            sb.append(gold).append("g");
+        }
+        if (silver != 0) {
+            sb.append(silver).append("s");
+        }
+        if (cooper != 0) {
+            sb.append(cooper).append("c");
+        }
+
+        return sb.toString();
+    }
+
+    private ItemProfitAction calcResaleAllianceToHorde(ItemStat itemStat) {
+        Integer allianceMinBuyout = itemStat.getAllianceAuctionInfo().getMinBuyout();
+        Integer hordeMinBuyout = itemStat.getHordeAuctionInfo().getMinBuyout();
+        Integer profit = hordeMinBuyout - allianceMinBuyout;
+        String comment = "Alliance " + costToString(allianceMinBuyout) + " -> Horde " + costToString(hordeMinBuyout);
+
+        return new ItemProfitAction(itemStat.getId(), "RESALE_ALLIANCE_TO_HORDE", allianceMinBuyout, hordeMinBuyout, profit, comment, new Date());
     }
 
 

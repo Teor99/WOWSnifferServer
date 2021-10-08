@@ -1,10 +1,10 @@
-package wow.sniffer.repos;
+package wow.sniffer.repo;
 
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.CrudRepository;
 import org.springframework.transaction.annotation.Transactional;
-import wow.sniffer.game.entity.ItemStat;
+import wow.sniffer.entity.ItemStat;
 
 public interface ItemStatRepository extends CrudRepository<ItemStat, Integer> {
 

@@ -5,7 +5,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import wow.sniffer.repos.ItemStatRepository;
+import wow.sniffer.repo.ItemStatRepository;
 
 @SpringBootApplication
 public class RepositoryTest implements CommandLineRunner {

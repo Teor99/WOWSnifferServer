@@ -1,4 +1,4 @@
-package wow.sniffer.game.entity;
+package wow.sniffer.entity;
 
 import com.sun.istack.NotNull;
 
@@ -6,6 +6,7 @@ import javax.persistence.*;
 import java.util.Date;
 
 @Entity
+@Table(indexes = {@Index(name = "item_id_index1", columnList = "id")})
 public class ItemHistory {
 
     @Id

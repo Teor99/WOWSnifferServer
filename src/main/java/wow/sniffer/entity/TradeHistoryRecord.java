@@ -1,4 +1,4 @@
-package wow.sniffer.game.entity;
+package wow.sniffer.entity;
 
 import com.sun.istack.NotNull;
 
