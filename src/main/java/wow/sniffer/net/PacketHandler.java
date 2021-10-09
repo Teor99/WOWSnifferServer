@@ -251,22 +251,21 @@ public class PacketHandler extends Thread {
 
                     itemHistoryList.add(new ItemHistory(itemStat.getId(), minBuyout, packet.getTimestamp()));
                 }
-                log.info("Update item history from fullscan: " + itemHistoryList.size());
+//                log.info("Update item history from fullscan: " + itemHistoryList.size());
                 itemHistoryRepository.saveAll(itemHistoryList);
             }
 
-            log.info("Update item stat, count: " + itemStatList.size());
+//            log.info("Update item stat, count: " + itemStatList.size());
             itemStatRepository.saveAll(itemStatList);
             itemStatRepository.removeOldRecords();
 
-            log.info("Update item profit records");
+//            log.info("Update item profit records");
             itemProfitActionRepository.saveAll(calculateProfit(itemStatList));
             itemProfitActionRepository.removeOldRecords();
 
-            if (isFullScan) {
-                Instant finish = Instant.now();
-                log.info("Full scan package processing took(sec): " + Duration.between(start, finish).toSeconds());
-            }
+            Instant finish = Instant.now();
+
+            log.info("Auction response package processing took: " + Duration.between(start, finish).toSeconds() + " seconds, updated item count: " + itemStatList.size());
         }
     }
 
