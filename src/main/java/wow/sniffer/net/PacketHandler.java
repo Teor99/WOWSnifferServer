@@ -13,19 +13,18 @@ import wow.sniffer.game.GameContext;
 import wow.sniffer.game.mail.Mail;
 import wow.sniffer.game.mail.MailItem;
 import wow.sniffer.game.mail.MailType;
+import wow.sniffer.repo.ItemCostRepository;
 import wow.sniffer.repo.ItemHistoryRepository;
 import wow.sniffer.repo.ItemProfitActionRepository;
-import wow.sniffer.repo.ItemStatRepository;
 import wow.sniffer.repo.TradeHistoryRecordRepository;
 
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Component
 @Scope("prototype")
@@ -36,7 +35,7 @@ public class PacketHandler extends Thread {
     private BlockingQueue<Packet> queue;
 
     @Autowired
-    private ItemStatRepository itemStatRepository;
+    private ItemCostRepository itemCostRepository;
     @Autowired
     private ItemHistoryRepository itemHistoryRepository;
     @Autowired
@@ -213,7 +212,7 @@ public class PacketHandler extends Thread {
 
         log.info("Set auction faction as: " + gameContext.getAuctionFaction().name());
 
-        itemStatRepository.removeOldRecords();
+        itemCostRepository.removeOldRecords();
         itemProfitActionRepository.removeOldRecords();
     }
 
@@ -242,33 +241,27 @@ public class PacketHandler extends Thread {
         boolean isFullScan = totalItemCount > 1000;
 
         if (totalItemCount == gameContext.getAuctionRecords().size()) {
-            List<ItemStat> itemStatList = getItemStatListFromAuctionRecordsList(gameContext.getAuctionRecords());
+            List<ItemCost> itemCostList = getItemStatListFromAuctionRecordsList(gameContext.getAuctionRecords());
             if (isFullScan) {
                 List<ItemHistory> itemHistoryList = new ArrayList<>();
-                for (ItemStat itemStat : itemStatList) {
-                    Integer minBuyout = (gameContext.getAuctionFaction() == AuctionFaction.ALLIANCE) ?
-                            itemStat.getAllianceAuctionInfo().getMinBuyout() : itemStat.getHordeAuctionInfo().getMinBuyout();
-
-                    itemHistoryList.add(new ItemHistory(itemStat.getId(), minBuyout, packet.getTimestamp()));
+                for (ItemCost itemCost : itemCostList) {
+                    itemHistoryList.add(new ItemHistory(itemCost.getItemSource().getId(), itemCost.getPrice(), packet.getTimestamp()));
                 }
-//                log.info("Update item history from fullscan: " + itemHistoryList.size());
                 itemHistoryRepository.saveAll(itemHistoryList);
             }
 
-//            log.info("Update item stat, count: " + itemStatList.size());
-            itemStatRepository.saveAll(itemStatList);
-            itemStatRepository.removeOldRecords();
+            itemCostRepository.saveAll(itemCostList);
+            itemCostRepository.removeOldRecords();
 
-//            log.info("Update item profit records");
-            itemProfitActionRepository.saveAll(calculateProfit(itemStatList));
-            itemProfitActionRepository.removeOldRecords();
+//            itemProfitActionRepository.saveAll(calculateProfit(itemCostList));
+//            itemProfitActionRepository.removeOldRecords();
 
             Instant finish = Instant.now();
 
-            log.info("Auction response package processing took: " + Duration.between(start, finish).toSeconds() + " seconds, updated item count: " + itemStatList.size());
+            log.info("Auction response package processing took: " + Duration.between(start, finish).toSeconds() + " seconds, updated item count: " + itemCostList.size());
         }
     }
-
+/*
     private List<ItemProfitAction> calculateProfit(List<ItemStat> itemsForCalc) {
         List<ItemProfitAction> resultList = new ArrayList<>();
         for (ItemStat itemStat : itemsForCalc) {
@@ -339,54 +332,56 @@ public class PacketHandler extends Thread {
         String comment = "Alliance " + costToString(allianceMinBuyout) + " -> Horde " + costToString(hordeMinBuyout);
 
         return new ItemProfitAction(itemStat.getId(), "RESALE_ALLIANCE_TO_HORDE", allianceMinBuyout, hordeMinBuyout, profit, comment, new Date());
-    }
+    }*/
 
 
-    private List<ItemStat> getItemStatListFromAuctionRecordsList(List<AuctionRecord> auctionRecords) {
-        List<AuctionRecord> tmpList = new ArrayList<>(auctionRecords);
-        List<ItemStat> resultList = new ArrayList<>();
+    private List<ItemCost> getItemStatListFromAuctionRecordsList(List<AuctionRecord> auctionRecords) {
+        List<ItemCost> resultList = new ArrayList<>();
+        if (auctionRecords.isEmpty()) return resultList;
 
-        while (!tmpList.isEmpty()) {
-            List<AuctionRecord> listToRemove = new ArrayList<>();
-            AuctionRecord auctionRecord = tmpList.get(0);
+        auctionRecords.sort(Comparator.comparing(AuctionRecord::getId));
 
-            ItemStat itemStat = itemStatRepository.findById(auctionRecord.getId()).orElse(new ItemStat(auctionRecord.getId()));
-            ItemAuctionInfo itemAuctionInfo = new ItemAuctionInfo();
-
-            if (gameContext.getAuctionFaction() == AuctionFaction.ALLIANCE) {
-                itemStat.setAllianceAuctionInfo(itemAuctionInfo);
-            } else {
-                itemStat.setHordeAuctionInfo(itemAuctionInfo);
-            }
-
-            // init
-            itemAuctionInfo.setTotalCount(0);
-            itemAuctionInfo.setMinBuyout(0);
-            itemAuctionInfo.setAuctionCount(0);
-
-            for (AuctionRecord ar : tmpList) {
-                if (itemStat.getId() == ar.getId()) {
-                    // total count
-                    itemAuctionInfo.setTotalCount(itemAuctionInfo.getTotalCount() + ar.getCount());
-                    // auction count
-                    itemAuctionInfo.setAuctionCount(itemAuctionInfo.getAuctionCount() + 1);
-                    // min buyout
-                    if (itemAuctionInfo.getMinBuyout() == 0) {
-                        itemAuctionInfo.setMinBuyout(ar.getBuyoutPerItem());
-                    } else if (ar.getBuyoutPerItem() != 0) {
-                        itemAuctionInfo.setMinBuyout(Math.min(itemAuctionInfo.getMinBuyout(), ar.getBuyoutPerItem()));
-                    }
-                    // timestamp
-                    itemAuctionInfo.setTimestamp(auctionRecord.getTimestamp());
-
-                    listToRemove.add(ar);
-                }
-            }
-
-            tmpList.removeAll(listToRemove);
-            listToRemove.clear();
-            resultList.add(itemStat);
+        String source = null;
+        if (gameContext.getAuctionFaction() == AuctionFaction.ALLIANCE) {
+            source = "alliance_auction";
+        } else if (gameContext.getAuctionFaction() == AuctionFaction.HORDE) {
+            source = "horde_auction";
         }
+
+        Map<Integer, List<AuctionRecord>> collect = auctionRecords.stream().collect(Collectors.groupingBy(AuctionRecord::getId));
+
+        for (Map.Entry<Integer, List<AuctionRecord>> entry : collect.entrySet()) {
+            Integer itemId = entry.getKey();
+            List<AuctionRecord> groupedAuctionRecords = entry.getValue();
+            AuctionRecord auctionRecord = groupedAuctionRecords.stream()
+                    .filter(record -> record.getBuyoutPerItem() != 0)
+                    .min(Comparator.comparing(AuctionRecord::getBuyoutPerItem)).orElse(null);
+
+            if (auctionRecord != null) {
+                resultList.add(new ItemCost(new ItemSource(auctionRecord.getId(), source), auctionRecord.getBuyoutPerItem(), new Date()));
+            }
+        }
+
+        /*ItemCost itemCost = new ItemCost(new ItemSource(0,source), Integer.MAX_VALUE, new Date());
+
+        for (AuctionRecord record : auctionRecords) {
+            if (itemCost.getItemSource().getId() == 0) {
+                itemCost.getItemSource().setId(record.getId());
+            }
+
+            if (itemCost.getItemSource().getId() == record.getId() && record.getBuyoutPerItem() != 0) {
+                itemCost.setPrice(Math.min(itemCost.getPrice(), record.getBuyoutPerItem()));
+            } else {
+                if (itemCost.getPrice() > 0 && itemCost.getPrice() < Integer.MAX_VALUE) {
+                    resultList.add(itemCost);
+                }
+                itemCost = new ItemCost(new ItemSource(record.getId(), source), record.getBuyoutPerItem(), new Date());
+            }
+        }
+
+        if (itemCost.getPrice() > 0 && itemCost.getPrice() < Integer.MAX_VALUE) {
+            resultList.add(itemCost);
+        }*/
 
         return resultList;
     }
