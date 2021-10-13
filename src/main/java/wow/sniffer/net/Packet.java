@@ -74,6 +74,7 @@ public class Packet {
 
     public short readShortE() throws IOException {
         return data.readShortE();
+
     }
 
     public long readLongE() throws IOException {

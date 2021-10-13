@@ -7,12 +7,19 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 import wow.sniffer.entity.ItemProfitAction;
 
+import java.util.List;
+
 public interface ItemProfitActionRepository extends CrudRepository<ItemProfitAction, Integer> {
 
     @Modifying
     @Transactional
     @Query(value = "DELETE FROM item_profit_action WHERE id = :id", nativeQuery = true)
-    void removeByItemId(@Param("id") Integer id);
+    void deleteByItemId(@Param("id") Integer id);
+
+    @Modifying
+    @Transactional
+    @Query(value = "DELETE FROM item_profit_action WHERE id IN(:id_list)", nativeQuery = true)
+    void deleteAllByItemId(@Param("id_list") List<Integer> idList);
 
     @Modifying
     @Transactional

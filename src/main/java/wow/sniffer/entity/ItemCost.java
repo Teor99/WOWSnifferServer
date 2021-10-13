@@ -25,12 +25,12 @@ public class ItemCost {
     public ItemCost() {
     }
 
-    public ItemSource getItemSource() {
-        return itemSource;
+    public Integer getId() {
+        return itemSource.getId();
     }
 
-    public void setItemSource(ItemSource itemSource) {
-        this.itemSource = itemSource;
+    public String getSource() {
+        return itemSource.getSource();
     }
 
     public Integer getPrice() {

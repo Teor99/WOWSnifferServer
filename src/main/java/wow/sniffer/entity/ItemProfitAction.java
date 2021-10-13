@@ -12,20 +12,23 @@ public class ItemProfitAction {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer recordId;
     @NotNull
-    private final Integer id;
+    private Integer id;
     @Column(length = 64)
-    private final String action;
+    private String action;
     @Column(name = "a")
-    private final Integer allianceMinBuyout;
+    private Integer allianceMinBuyout;
     @Column(name = "h")
-    private final Integer hordeMinBuyout;
-    private final Integer profit;
+    private Integer hordeMinBuyout;
+    private Integer profit;
 
     @Column(columnDefinition = "TEXT")
-    private final String comment;
+    private String comment;
 
     @Column(columnDefinition = "TIMESTAMP")
-    private final Date recordTimestamp;
+    private Date recordTimestamp;
+
+    public ItemProfitAction() {
+    }
 
     public ItemProfitAction(Integer id, String action, Integer allianceMinBuyout, Integer hordeMinBuyout, Integer profit, String comment, Date recordTimestamp) {
         this.id = id;

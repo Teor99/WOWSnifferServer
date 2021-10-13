@@ -8,15 +8,12 @@ import org.springframework.stereotype.Component;
 import wow.sniffer.entity.*;
 import wow.sniffer.game.AuctionFaction;
 import wow.sniffer.game.AuctionRecord;
-import wow.sniffer.game.Character;
+import wow.sniffer.entity.GameCharacter;
 import wow.sniffer.game.GameContext;
 import wow.sniffer.game.mail.Mail;
 import wow.sniffer.game.mail.MailItem;
 import wow.sniffer.game.mail.MailType;
-import wow.sniffer.repo.ItemCostRepository;
-import wow.sniffer.repo.ItemHistoryRepository;
-import wow.sniffer.repo.ItemProfitActionRepository;
-import wow.sniffer.repo.TradeHistoryRecordRepository;
+import wow.sniffer.repo.*;
 
 import java.io.IOException;
 import java.time.Duration;
@@ -24,7 +21,6 @@ import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 @Component
 @Scope("prototype")
@@ -36,6 +32,10 @@ public class PacketHandler extends Thread {
 
     @Autowired
     private ItemCostRepository itemCostRepository;
+    @Autowired
+    private GameCharacterRepository gameCharacterRepository;
+    @Autowired
+    private SpellRepository spellRepository;
     @Autowired
     private ItemHistoryRepository itemHistoryRepository;
     @Autowired
@@ -242,43 +242,77 @@ public class PacketHandler extends Thread {
 
         if (totalItemCount == gameContext.getAuctionRecords().size()) {
             List<ItemCost> itemCostList = getItemStatListFromAuctionRecordsList(gameContext.getAuctionRecords());
+
+            // save item price history if fullscan
             if (isFullScan) {
                 List<ItemHistory> itemHistoryList = new ArrayList<>();
                 for (ItemCost itemCost : itemCostList) {
-                    itemHistoryList.add(new ItemHistory(itemCost.getItemSource().getId(), itemCost.getPrice(), packet.getTimestamp()));
+                    itemHistoryList.add(new ItemHistory(itemCost.getId(), itemCost.getPrice(), packet.getTimestamp()));
                 }
                 itemHistoryRepository.saveAll(itemHistoryList);
             }
 
+            // save items prices
             itemCostRepository.saveAll(itemCostList);
             itemCostRepository.removeOldRecords();
 
-//            itemProfitActionRepository.saveAll(calculateProfit(itemCostList));
-//            itemProfitActionRepository.removeOldRecords();
+            // Profit
+            if (isFullScan) {
+                itemProfitActionRepository.deleteAll();
+                ArrayList<ItemCost> allItemCostList = new ArrayList<>();
+                itemCostRepository.findAll().forEach(allItemCostList::add);
+                itemProfitActionRepository.saveAll(calculateProfit(allItemCostList));
+            } else {
+                Set<Integer> set = new HashSet<>();
+                itemCostList.forEach(itemCost -> {
+                    set.add(itemCost.getId());
+                });
+                itemProfitActionRepository.deleteAllByItemId(new ArrayList<>(set));
+                itemProfitActionRepository.saveAll(calculateProfit(itemCostRepository.findAllByItemId(new ArrayList<>(set))));
+            }
+
+            itemProfitActionRepository.removeOldRecords();
 
             Instant finish = Instant.now();
 
             log.info("Auction response package processing took: " + Duration.between(start, finish).toSeconds() + " seconds, updated item count: " + itemCostList.size());
         }
     }
-/*
-    private List<ItemProfitAction> calculateProfit(List<ItemStat> itemsForCalc) {
-        List<ItemProfitAction> resultList = new ArrayList<>();
-        for (ItemStat itemStat : itemsForCalc) {
-            itemProfitActionRepository.removeByItemId(itemStat.getId());
 
-            if (itemStat.getAllianceAuctionInfo() == null || itemStat.getHordeAuctionInfo() == null) {
-                resultList.add(calcEmptyAuctionRecord(itemStat));
-            } else {
-                resultList.add(calcResaleAllianceToHorde(itemStat));
-                resultList.add(calcResaleHordeToAlliance(itemStat));
+    private List<ItemProfitAction> calculateProfit(List<ItemCost> itemsForCalc) {
+        List<ItemProfitAction> resultList = new ArrayList<>();
+
+        Map<Integer, List<ItemCost>> collect = itemsForCalc.stream().collect(Collectors.groupingBy(ItemCost::getId));
+
+        for (Map.Entry<Integer, List<ItemCost>> entry : collect.entrySet()) {
+            Integer itemId = entry.getKey();
+            List<ItemCost> itemCostList = entry.getValue();
+
+            if (itemCostList.size() == 1 && itemCostList.stream().allMatch(itemCost -> itemCost.getSource().equals("vendor"))) {
+                continue;
             }
 
+            if (itemCostList.size() > 1) {
+                ItemCost minItemCost = itemCostList.stream().min(Comparator.comparing(ItemCost::getPrice)).orElseThrow();
+                ItemCost maxItemCost = itemCostList.stream().max(Comparator.comparing(ItemCost::getPrice)).orElseThrow();
+
+                ItemCost allianceItemCost = itemCostList.stream().filter(itemCost -> itemCost.getSource().equals("alliance_auction")).findFirst().orElse(null);
+                Integer allianceMinBuyout = allianceItemCost != null? allianceItemCost.getPrice() : null;
+                ItemCost hordeItemCost = itemCostList.stream().filter(itemCost -> itemCost.getSource().equals("horde_auction")).findFirst().orElse(null);
+                Integer hordeMinBuyout = hordeItemCost != null? hordeItemCost.getPrice() : null;
+
+                String action = "RESELL_" + minItemCost.getSource().toUpperCase() + "_TO_" + maxItemCost.getSource().toUpperCase();
+                String comment = minItemCost.getSource() + " " + costToString(minItemCost.getPrice()) +
+                        " -> " + maxItemCost.getSource() + " " + costToString(maxItemCost.getPrice());
+
+                resultList.add(new ItemProfitAction(itemId, action, allianceMinBuyout, hordeMinBuyout, maxItemCost.getPrice() - minItemCost.getPrice(), comment, new Date()));
+            }
         }
+
         return resultList;
     }
 
-    private ItemProfitAction calcEmptyAuctionRecord(ItemStat itemStat) {
+    /*private ItemProfitAction calcEmptyAuctionRecord(ItemStat itemStat) {
         if (itemStat.getAllianceAuctionInfo() == null && itemStat.getHordeAuctionInfo() == null)
             throw new IllegalArgumentException("ItemStat with all null records");
 
@@ -307,6 +341,15 @@ public class PacketHandler extends Thread {
         return new ItemProfitAction(itemStat.getId(), "RESALE_HORDE_TO_ALLIANCE", allianceMinBuyout, hordeMinBuyout, profit, comment, new Date());
     }
 
+    private ItemProfitAction calcResaleAllianceToHorde(ItemStat itemStat) {
+        Integer allianceMinBuyout = itemStat.getAllianceAuctionInfo().getMinBuyout();
+        Integer hordeMinBuyout = itemStat.getHordeAuctionInfo().getMinBuyout();
+        Integer profit = hordeMinBuyout - allianceMinBuyout;
+        String comment = "Alliance " + costToString(allianceMinBuyout) + " -> Horde " + costToString(hordeMinBuyout);
+
+        return new ItemProfitAction(itemStat.getId(), "RESALE_ALLIANCE_TO_HORDE", allianceMinBuyout, hordeMinBuyout, profit, comment, new Date());
+    }*/
+
     public static String costToString(Integer price) {
         int cooper = price % 100;
         int silver = (price - cooper) % 10000 / 100;
@@ -324,15 +367,6 @@ public class PacketHandler extends Thread {
 
         return sb.toString();
     }
-
-    private ItemProfitAction calcResaleAllianceToHorde(ItemStat itemStat) {
-        Integer allianceMinBuyout = itemStat.getAllianceAuctionInfo().getMinBuyout();
-        Integer hordeMinBuyout = itemStat.getHordeAuctionInfo().getMinBuyout();
-        Integer profit = hordeMinBuyout - allianceMinBuyout;
-        String comment = "Alliance " + costToString(allianceMinBuyout) + " -> Horde " + costToString(hordeMinBuyout);
-
-        return new ItemProfitAction(itemStat.getId(), "RESALE_ALLIANCE_TO_HORDE", allianceMinBuyout, hordeMinBuyout, profit, comment, new Date());
-    }*/
 
 
     private List<ItemCost> getItemStatListFromAuctionRecordsList(List<AuctionRecord> auctionRecords) {
@@ -387,27 +421,31 @@ public class PacketHandler extends Thread {
     }
 
     private void smsgSendKnownSpells(Packet packet) throws IOException {
-        List<Integer> spellList = new ArrayList<>();
+        int size = packet.getSize();
+
+        Set<Spell> spellSet = new HashSet<>();
         packet.skip(1);
         short count = packet.readShortE();
+        log.info("Known spells: " + count);
+
         for (int i = 0; i < count; i++) {
             int spellId = packet.readIntE();
             packet.skip(2);
-            spellList.add(spellId);
+            spellRepository.findById(spellId).ifPresent(spellSet::add);
         }
 
-        gameContext.getCharacter().setSpellList(spellList);
-
-        log.info("Known spells: " + spellList.size());
+        log.info("spell set from db: " + spellSet.size());
+        gameContext.getCharacter().setSpellSet(spellSet);
+        gameCharacterRepository.save(gameContext.getCharacter());
     }
 
     private void cmsgPlayerLogin(Packet packet) throws IOException {
         long guid = packet.readLongE();
-        for (Character character : gameContext.getLoginChamberCharList()) {
-            if (character.getGuid() == guid) {
-                gameContext.setCharacter(character);
+        for (GameCharacter gameCharacter : gameContext.getLoginChamberCharList()) {
+            if (gameCharacter.getId() == guid) {
+                gameContext.setCharacter(gameCharacter);
                 log.info("Login with character:");
-                log.info(String.valueOf(character));
+                log.info(String.valueOf(gameCharacter));
                 return;
             }
         }
@@ -416,7 +454,7 @@ public class PacketHandler extends Thread {
     }
 
     private void smsgEnumCharactersResult(Packet packet) throws IOException {
-        List<Character> charList = new ArrayList<>();
+        List<GameCharacter> charList = new ArrayList<>();
 
         log.info("Login chamber character list:");
 
@@ -429,9 +467,9 @@ public class PacketHandler extends Thread {
             packet.skip(6);
             byte level = packet.readByte();
             packet.skip(252);
-            Character character = new Character(guid, charName, raceCode, classCode, level);
-            log.info(String.valueOf(character));
-            charList.add(character);
+            GameCharacter gameCharacter = new GameCharacter(guid, charName);
+            log.info(String.valueOf(gameCharacter));
+            charList.add(gameCharacter);
         }
 
         gameContext.setLoginChamberCharList(charList);

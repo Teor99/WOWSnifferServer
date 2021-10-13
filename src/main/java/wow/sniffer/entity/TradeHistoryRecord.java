@@ -13,19 +13,22 @@ public class TradeHistoryRecord {
     private Integer recordId;
 
     @NotNull
-    private final Integer itemId;
+    private Integer itemId;
     @NotNull
     @Column(columnDefinition = "TIMESTAMP")
-    private final Date timestamp;
+    private Date timestamp;
 
     @NotNull
     @Column(length = 16)
-    private final String action;
+    private String action;
 
     @NotNull
-    private final Integer count;
+    private Integer count;
     @NotNull
-    private final Integer cost;
+    private Integer cost;
+
+    public TradeHistoryRecord() {
+    }
 
     public TradeHistoryRecord(Integer itemId, Date timestamp, String action, Integer count, Integer cost) {
         this.itemId = itemId;
