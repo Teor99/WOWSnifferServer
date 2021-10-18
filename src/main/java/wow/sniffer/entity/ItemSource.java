@@ -39,14 +39,14 @@ public class ItemSource implements Serializable {
 
         ItemSource that = (ItemSource) o;
 
-        if (id != null ? !id.equals(that.id) : that.id != null) return false;
-        return source != null ? source.equals(that.source) : that.source == null;
+        if (!id.equals(that.id)) return false;
+        return source.equals(that.source);
     }
 
     @Override
     public int hashCode() {
-        int result = id != null ? id.hashCode() : 0;
-        result = 31 * result + (source != null ? source.hashCode() : 0);
+        int result = id.hashCode();
+        result = 31 * result + source.hashCode();
         return result;
     }
 }

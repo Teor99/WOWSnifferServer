@@ -16,7 +16,7 @@ public enum MailError {
     MailAttachmentInvalid(19),
     ItemHasExpired(21);
 
-    public int code;
+    public final int code;
 
     MailError(int code) {
         this.code = code;
