@@ -6,12 +6,12 @@ import java.util.Set;
 @Entity
 public class GameCharacter {
     @Id
-    private Long id;
+    private Long charId;
     private String name;
 
-    @ManyToMany
+    @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
-            name = "game_character_spell",
+            name = "game_character_spell_set",
             joinColumns = @JoinColumn(name = "char_id"),
             inverseJoinColumns = @JoinColumn(name = "spell_id"))
     private Set<Spell> spellSet;
@@ -19,18 +19,18 @@ public class GameCharacter {
     public GameCharacter() {
     }
 
-    public GameCharacter(Long id, String name) {
-        this.id = id;
+    public GameCharacter(Long charId, String name) {
+        this.charId = charId;
         this.name = name;
     }
 
     @Override
     public String toString() {
-        return "guid: " + Long.toHexString(id) + " name: " + name;
+        return "guid: " + Long.toHexString(charId) + " name: " + name;
     }
 
-    public long getId() {
-        return id;
+    public long getCharId() {
+        return charId;
     }
 
     public String getName() {

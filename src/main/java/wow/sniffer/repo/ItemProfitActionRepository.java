@@ -25,4 +25,9 @@ public interface ItemProfitActionRepository extends CrudRepository<ItemProfitAct
     @Transactional
     @Query(value = "DELETE FROM item_profit_action WHERE TIMESTAMPDIFF(MINUTE, record_timestamp, now()) >= 60", nativeQuery = true)
     void removeOldRecords();
+
+    @Modifying
+    @Transactional
+    @Query(value = "DELETE FROM item_profit_action WHERE action = 'CRAFT'", nativeQuery = true)
+    void removeCraftRecords();
 }
