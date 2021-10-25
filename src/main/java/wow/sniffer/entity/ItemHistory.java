@@ -1,7 +1,5 @@
 package wow.sniffer.entity;
 
-import com.sun.istack.NotNull;
-
 import javax.persistence.*;
 import java.util.Date;
 
@@ -12,12 +10,11 @@ public class ItemHistory {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer recordId;
-    @NotNull
+    @Column(nullable = false)
     private Integer id;
-    @NotNull
+    @Column(nullable = false)
     private Integer minBuyout;
-    @NotNull
-    @Column(columnDefinition = "TIMESTAMP")
+    @Column(columnDefinition = "TIMESTAMP", nullable = false)
     private Date timestamp;
 
     public ItemHistory() {

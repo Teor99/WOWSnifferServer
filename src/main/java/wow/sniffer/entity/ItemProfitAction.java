@@ -1,7 +1,5 @@
 package wow.sniffer.entity;
 
-import com.sun.istack.NotNull;
-
 import javax.persistence.*;
 import java.util.Date;
 
@@ -11,7 +9,7 @@ public class ItemProfitAction {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer recordId;
-    @NotNull
+    @Column(nullable = false)
     private Integer id;
     @Column(length = 64)
     private String action;

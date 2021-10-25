@@ -1,0 +1,16 @@
+<?xml version = "1.0" encoding = "utf-8"?>
+<!DOCTYPE hibernate-configuration SYSTEM
+        "http://www.hibernate.org/dtd/hibernate-configuration-3.0.dtd">
+<hibernate-configuration>
+    <session-factory>
+        <property name="hibernate.connection.driver_class">com.mysql.jdbc.Driver</property>
+        <property name="hibernate.connection.url">jdbc:mysql://localhost/wowcircle_trader_new</property>
+        <property name="hibernate.connection.username">testuser</property>
+        <property name="hibernate.connection.password">testuser</property>
+        <property name="hibernate.dialect">org.hibernate.dialect.MySQLDialect</property>
+        <!--        <property name="hbm2ddl.auto">create</property>-->
+        <property name="hbm2ddl.auto">update</property>
+<!--        <property name="show_sql">true</property>-->
+<!--        <property name="format_sql">true</property>-->
+    </session-factory>
+</hibernate-configuration>

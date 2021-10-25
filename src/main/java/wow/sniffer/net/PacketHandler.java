@@ -1,10 +1,7 @@
 package wow.sniffer.net;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Scope;
-import org.springframework.stereotype.Component;
+import org.hibernate.SessionFactory;
+import org.jboss.logging.Logger;
 import wow.sniffer.entity.*;
 import wow.sniffer.game.AuctionFaction;
 import wow.sniffer.game.AuctionRecord;
@@ -12,7 +9,6 @@ import wow.sniffer.game.GameContext;
 import wow.sniffer.game.mail.Mail;
 import wow.sniffer.game.mail.MailItem;
 import wow.sniffer.game.mail.MailType;
-import wow.sniffer.repo.*;
 
 import java.io.IOException;
 import java.time.Duration;
@@ -21,36 +17,26 @@ import java.util.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.stream.Collectors;
 
-@Component
-@Scope("prototype")
 public class PacketHandler extends Thread {
 
-    private final Logger log = LoggerFactory.getLogger(PacketHandler.class);
+    private final Logger log = Logger.getLogger(PacketHandler.class);
 
-    private BlockingQueue<Packet> queue;
+    private final BlockingQueue<Packet> queue;
+    private final SessionFactory sessionFactory;
 
-    @Autowired
-    private ItemCostRepository itemCostRepository;
-    @Autowired
-    private GameCharacterRepository gameCharacterRepository;
-    @Autowired
-    private SpellRepository spellRepository;
-    @Autowired
-    private ItemHistoryRepository itemHistoryRepository;
-    @Autowired
-    private TradeHistoryRecordRepository tradeHistoryRecordRepository;
-    @Autowired
-    private ItemProfitActionRepository itemProfitActionRepository;
+    private final GameContext gameContext;
 
-    private GameContext gameContext;
-
-    public PacketHandler() {
+    public PacketHandler(String threadName, BlockingQueue<Packet> queue, SessionFactory sessionFactory) {
+        super();
+        this.setName(threadName);
+        this.queue = queue;
+        this.sessionFactory = sessionFactory;
+        this.gameContext = new GameContext();
     }
 
     @Override
     public void run() {
         log.info("Begin game data processing");
-        gameContext = new GameContext();
 
         try {
             while (!isInterrupted()) {
@@ -129,7 +115,8 @@ public class PacketHandler extends Thread {
                     }
 
                     if (actionString != null) {
-                        tradeHistoryRecordRepository.save(new TradeHistoryRecord(itemId, packet.getTimestamp(), actionString, count, cost));
+                        // FIXME
+//                        tradeHistoryRecordRepository.save(new TradeHistoryRecord(itemId, packet.getTimestamp(), actionString, count, cost));
                     }
                 }
 
@@ -211,8 +198,9 @@ public class PacketHandler extends Thread {
 
         log.info("Set auction faction as: " + gameContext.getAuctionFaction().name());
 
-        itemCostRepository.removeOldRecords();
-        itemProfitActionRepository.removeOldRecords();
+        // FIXME
+//        itemCostRepository.removeOldRecords();
+//        itemProfitActionRepository.removeOldRecords();
     }
 
     private void smsgAuctionListResult(Packet packet) throws IOException {
@@ -248,15 +236,18 @@ public class PacketHandler extends Thread {
                 for (ItemCost itemCost : itemCostList) {
                     itemHistoryList.add(new ItemHistory(itemCost.getId(), itemCost.getPrice(), packet.getTimestamp()));
                 }
-                itemHistoryRepository.saveAll(itemHistoryList);
+                // FIXME
+//                itemHistoryRepository.saveAll(itemHistoryList);
             }
 
             // save items prices
-            itemCostRepository.saveAll(itemCostList);
-            itemCostRepository.removeOldRecords();
+            // FIXME
+//            itemCostRepository.saveAll(itemCostList);
+//            itemCostRepository.removeOldRecords();
 
             // Profit
-            if (isFullScan) {
+            // FIXME
+            /*if (isFullScan) {
                 itemProfitActionRepository.deleteAll();
                 ArrayList<ItemCost> allItemCostList = new ArrayList<>();
                 itemCostRepository.findAll().forEach(allItemCostList::add);
@@ -268,7 +259,7 @@ public class PacketHandler extends Thread {
                 itemProfitActionRepository.saveAll(calculateProfit(itemCostRepository.findAllByItemId(new ArrayList<>(set))));
             }
 
-            itemProfitActionRepository.removeOldRecords();
+            itemProfitActionRepository.removeOldRecords();*/
 
             Instant finish = Instant.now();
 
@@ -385,12 +376,14 @@ public class PacketHandler extends Thread {
         for (int i = 0; i < count; i++) {
             int spellId = packet.readIntE();
             packet.skip(2);
-            spellRepository.findById(spellId).ifPresent(spellSet::add);
+            // FIXME
+            // spellRepository.findById(spellId).ifPresent(spellSet::add);
         }
 
         log.info("spell set from db: " + spellSet.size());
         gameContext.getCharacter().setSpellSet(spellSet);
-        gameCharacterRepository.save(gameContext.getCharacter());
+        // FIXME
+//        gameCharacterRepository.save(gameContext.getCharacter());
     }
 
     private void cmsgPlayerLogin(Packet packet) throws IOException {
@@ -438,10 +431,4 @@ public class PacketHandler extends Thread {
     public BlockingQueue<Packet> getQueue() {
         return queue;
     }
-
-    public void setQueue(BlockingQueue<Packet> queue) {
-        this.queue = queue;
-    }
-
-
 }
