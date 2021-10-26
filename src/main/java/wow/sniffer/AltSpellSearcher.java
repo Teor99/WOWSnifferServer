@@ -4,10 +4,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import wow.sniffer.dao.GameContextDAO;
 import wow.sniffer.entity.Component;
 import wow.sniffer.entity.Spell;
-import wow.sniffer.repo.ComponentRepository;
-import wow.sniffer.repo.SpellRepository;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -17,15 +16,12 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-@SpringBootApplication
+/*@SpringBootApplication
 public class AltSpellSearcher implements CommandLineRunner {
     private final Set<Spell> origSpellSet = new HashSet<>();
 
     @Autowired
-    private SpellRepository spellRepository;
-
-    @Autowired
-    private ComponentRepository componentRepository;
+    private GameContextDAO gameContextDAO;
 
     @Override
     public void run(String... args) {
@@ -173,4 +169,4 @@ public class AltSpellSearcher implements CommandLineRunner {
     public static void main(String[] args) {
         SpringApplication.run(AltSpellSearcher.class, args);
     }
-}
+}*/

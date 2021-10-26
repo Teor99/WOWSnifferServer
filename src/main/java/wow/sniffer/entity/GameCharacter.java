@@ -1,7 +1,7 @@
 package wow.sniffer.entity;
 
 import javax.persistence.*;
-import java.util.Set;
+import java.util.List;
 
 @Entity
 public class GameCharacter {
@@ -9,12 +9,12 @@ public class GameCharacter {
     private Long charId;
     private String name;
 
-    @ManyToMany(fetch = FetchType.EAGER)
+    @ManyToMany
     @JoinTable(
             name = "game_character_spell_set",
             joinColumns = @JoinColumn(name = "char_id"),
             inverseJoinColumns = @JoinColumn(name = "spell_id"))
-    private Set<Spell> spellSet;
+    private List<Spell> spellSet;
 
     public GameCharacter() {
     }
@@ -37,11 +37,11 @@ public class GameCharacter {
         return name;
     }
 
-    public Set<Spell> getSpellSet() {
+    public List<Spell> getSpellList() {
         return spellSet;
     }
 
-    public void setSpellSet(Set<Spell> spellSet) {
+    public void setSpellSet(List<Spell> spellSet) {
         this.spellSet = spellSet;
     }
 }

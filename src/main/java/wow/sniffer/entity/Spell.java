@@ -32,17 +32,17 @@ public class Spell {
     @Column(nullable = false)
     private Integer level;
 
-    @OneToMany(mappedBy = "spell", fetch = FetchType.EAGER)
+    @OneToMany(mappedBy = "spell")
     private Set<Component> components;
 
-    @ManyToMany(fetch = FetchType.EAGER)
+    @ManyToMany
     @JoinTable(
             name = "spell_need_subspell",
             joinColumns = @JoinColumn(name = "spell_id"),
             inverseJoinColumns = @JoinColumn(name = "subspell_id"))
     private List<Spell> subSpellSet;
 
-    @ManyToMany(fetch = FetchType.EAGER)
+    @ManyToMany
     @JoinTable(
             name = "spell_has_alt_spell",
             joinColumns = @JoinColumn(name = "spell_id"),

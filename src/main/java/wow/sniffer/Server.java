@@ -19,7 +19,7 @@ import java.net.Socket;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
-//@SpringBootApplication
+@SpringBootApplication
 public class Server implements CommandLineRunner {
 
     private final Logger log = LoggerFactory.getLogger(Server.class);

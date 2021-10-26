@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
+import wow.sniffer.dao.GameContextDAO;
 import wow.sniffer.entity.*;
 import wow.sniffer.game.AuctionFaction;
 import wow.sniffer.game.AuctionRecord;
@@ -12,7 +13,6 @@ import wow.sniffer.game.GameContext;
 import wow.sniffer.game.mail.Mail;
 import wow.sniffer.game.mail.MailItem;
 import wow.sniffer.game.mail.MailType;
-import wow.sniffer.repo.*;
 
 import java.io.IOException;
 import java.time.Duration;
@@ -20,39 +20,25 @@ import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
-import java.util.stream.StreamSupport;
 
 @Component
 @Scope("prototype")
 public class PacketHandler extends Thread {
 
     private final Logger log = LoggerFactory.getLogger(PacketHandler.class);
-
     private BlockingQueue<Packet> queue;
+    private final GameContext gameContext;
 
     @Autowired
-    private ItemCostRepository itemCostRepository;
-    @Autowired
-    private GameCharacterRepository gameCharacterRepository;
-    @Autowired
-    private SpellRepository spellRepository;
-    @Autowired
-    private ItemHistoryRepository itemHistoryRepository;
-    @Autowired
-    private TradeHistoryRecordRepository tradeHistoryRecordRepository;
-    @Autowired
-    private ItemProfitActionRepository itemProfitActionRepository;
-
-    private GameContext gameContext;
+    private GameContextDAO gameContextDAO;
 
     public PacketHandler() {
+        gameContext = new GameContext();
     }
 
     @Override
     public void run() {
         log.info("Begin game data processing");
-        gameContext = new GameContext();
 
         try {
             while (!isInterrupted()) {
@@ -131,7 +117,7 @@ public class PacketHandler extends Thread {
                     }
 
                     if (actionString != null) {
-                        tradeHistoryRecordRepository.save(new TradeHistoryRecord(itemId, packet.getTimestamp(), actionString, count, cost));
+                        gameContextDAO.saveTradeHistoryRecord(new TradeHistoryRecord(itemId, packet.getTimestamp(), actionString, count, cost));
                     }
                 }
 
@@ -213,8 +199,8 @@ public class PacketHandler extends Thread {
 
         log.info("Set auction faction as: " + gameContext.getAuctionFaction().name());
 
-        itemCostRepository.removeOldRecords();
-        itemProfitActionRepository.removeOldRecords();
+        gameContextDAO.deleteOldItemCostRecords();
+        gameContextDAO.deleteOldItemProfitActionRecords();
     }
 
     private void smsgAuctionListResult(Packet packet) throws IOException {
@@ -250,30 +236,26 @@ public class PacketHandler extends Thread {
                 for (ItemCost itemCost : itemCostList) {
                     itemHistoryList.add(new ItemHistory(itemCost.getId(), itemCost.getPrice(), packet.getTimestamp()));
                 }
-                itemHistoryRepository.saveAll(itemHistoryList);
+                gameContextDAO.saveItemHistoryList(itemHistoryList);
             }
 
             // save items prices
-            itemCostRepository.saveAll(itemCostList);
-            itemCostRepository.removeOldRecords();
+            gameContextDAO.saveItemCostList(itemCostList);
+            gameContextDAO.deleteOldItemCostRecords();
 
-            // Profit
-            if (isFullScan) {
-                itemProfitActionRepository.deleteAll();
-                ArrayList<ItemCost> allItemCostList = new ArrayList<>();
-                itemCostRepository.findAll().forEach(allItemCostList::add);
-                itemProfitActionRepository.saveAll(calculateProfit(allItemCostList));
-            } else {
-                Set<Integer> set = new HashSet<>();
-                itemCostList.forEach(itemCost -> set.add(itemCost.getId()));
-                itemProfitActionRepository.deleteAllByItemId(new ArrayList<>(set));
-                itemProfitActionRepository.saveAll(calculateProfit(itemCostRepository.findAllByItemId(new ArrayList<>(set))));
-            }
+            // clear profit
+            gameContextDAO.deleteAllItemProfitActionRecords();
 
-            itemProfitActionRepository.removeCraftRecords();
-            itemProfitActionRepository.saveAll(calculateCraftProfit());
+            // get item prices for profit calc
+            List<ItemCost> allItemCostList = gameContextDAO.getAllItemCostList();
 
-            itemProfitActionRepository.removeOldRecords();
+            // calc resell profit
+            List<ItemProfitAction> itemProfitActions = calculateResellProfit(allItemCostList);
+            gameContextDAO.updateItemProfitActionList(itemProfitActions);
+
+            // calc craft profit
+            List<Spell> craftSpells = gameContextDAO.getAutoUpdateCraftSpells();
+            gameContextDAO.updateItemProfitActionList(calculateProfitListFromCraftSpellList(craftSpells, allItemCostList));
 
             Instant finish = Instant.now();
 
@@ -281,100 +263,119 @@ public class PacketHandler extends Thread {
         }
     }
 
-    private List<ItemProfitAction> calculateCraftProfit() {
-        List<ItemCost> itemCostList = StreamSupport.stream(itemCostRepository.findAll().spliterator(), false).collect(Collectors.toList());
+    private List<ItemProfitAction> calculateProfitListFromCraftSpellList(List<Spell> craftSpells, List<ItemCost> itemCostList) {
 
         List<ItemProfitAction> resultList = new ArrayList<>();
-        for (GameCharacter gc : gameCharacterRepository.findAll()) {
-            for (Spell spell : gc.getSpellSet()) {
-                if (!spell.isAutoUpdate()) continue;
 
-                // check all component have cost source
-                boolean allComponentsCostExist = true;
-                for (wow.sniffer.entity.Component component : spell.getComponents()) {
-                    if (itemCostList.stream().noneMatch(itemCost -> itemCost.getId().equals(component.getItem().getItemId()))) {
-                        allComponentsCostExist = false;
-                        break;
-                    }
-                }
+        for (Spell spell : craftSpells) {
+            resultList.addAll(calculateProfitListFromCraftSpell(spell, itemCostList));
 
-                // if craft item or component not have cost source - skip spell
-                if (!allComponentsCostExist || itemCostList.stream().noneMatch(itemCost -> itemCost.getId().equals(spell.getCraftItem().getItemId()))) {
-                    continue;
-                }
-
-                List<ItemCost> craftItemCostSourceList = itemCostList.stream()
-                        .filter(itemCost -> itemCost.getId().equals(spell.getCraftItem().getItemId()))
-                        .sorted(Comparator.comparing(ItemCost::getPrice, Comparator.reverseOrder()))
-                        .collect(Collectors.toList());
-
-                ItemCost maxCostSource = craftItemCostSourceList.get(0);
-                ItemCost allianceItemCost = craftItemCostSourceList.stream().filter(itemCost -> itemCost.getSource().equals("alliance_auction")).findFirst().orElse(null);
-                ItemCost hordeItemCost = craftItemCostSourceList.stream().filter(itemCost -> itemCost.getSource().equals("horde_auction")).findFirst().orElse(null);
-                Integer allianceMinBuyout = allianceItemCost != null ? allianceItemCost.getPrice() : null;
-                Integer hordeMinBuyout = hordeItemCost != null ? hordeItemCost.getPrice() : null;
-
-
-                StringBuilder spellInfo = new StringBuilder();
-                spellInfo.append("spell: (")
-                        .append(spell.getSpellId())
-                        .append(") ")
-                        .append(spell.getName());
-
-                StringBuilder sellTo = new StringBuilder();
-                sellTo.append("sell to:\n");
-                for (ItemCost cost : craftItemCostSourceList) {
-                    sellTo.append("\t")
-                            .append(costToString(cost.getPrice()))
-                            .append(" ")
-                            .append(cost.getSource())
-                            .append("\n");
-                }
-
-                int craftCost = 0;
-
-                StringBuilder compInfo = new StringBuilder();
-                compInfo.append("components:\n");
-                for (wow.sniffer.entity.Component comp : spell.getComponents()) {
-
-                    List<ItemCost> compItemCostSourceList = itemCostList.stream()
-                            .filter(itemCost -> itemCost.getId().equals(comp.getItem().getItemId()))
-                            .sorted(Comparator.comparing(ItemCost::getPrice))
-                            .collect(Collectors.toList());
-
-                    craftCost += compItemCostSourceList.get(0).getPrice() * comp.getCount();
-                    compInfo.append(comp.getCount())
-                            .append(" x (")
-                            .append(comp.getItem().getItemId())
-                            .append(") ")
-                            .append(comp.getItem().getName())
-                            .append("\n");
-                    for (ItemCost cost : compItemCostSourceList) {
-                        compInfo.append("\t")
-                                .append(costToString(cost.getPrice()))
-                                .append(" ")
-                                .append(cost.getSource())
-                                .append("\n");
-                    }
-                }
-                int profit = spell.getCraftItemCount() * maxCostSource.getPrice() - craftCost;
-
-                spellInfo.append(" craft cost: ")
-                        .append(costToString(craftCost))
-                        .append(" profit: ")
-                        .append(costToString(profit))
-                        .append("\n");
-
-                String comment = spellInfo.toString() + "\n" + sellTo.toString() + "\n" + compInfo.toString();
-
-                resultList.add(new ItemProfitAction(spell.getCraftItem().getItemId(), "CRAFT", allianceMinBuyout, hordeMinBuyout, profit, comment, new Date()));
+            for (Spell altSpell : spell.getAltSpellSet()) {
+                resultList.addAll(calculateProfitListFromCraftSpell(altSpell, itemCostList));
             }
         }
 
         return resultList;
     }
 
-    private List<ItemProfitAction> calculateProfit(List<ItemCost> itemsForCalc) {
+    private List<ItemProfitAction> calculateProfitListFromCraftSpell(Spell spell, List<ItemCost> itemCostList) {
+        List<ItemProfitAction> resultList = new ArrayList<>();
+
+        // check all component have cost source
+        boolean allComponentsCostExist = true;
+        for (wow.sniffer.entity.Component component : spell.getComponents()) {
+            if (itemCostList.stream().noneMatch(itemCost -> itemCost.getId().equals(component.getItem().getItemId()))) {
+                allComponentsCostExist = false;
+                break;
+            }
+        }
+
+        // if craft item or component not have cost source - skip spell
+        if (!allComponentsCostExist || itemCostList.stream().noneMatch(itemCost -> itemCost.getId().equals(spell.getCraftItem().getItemId()))) {
+            return resultList;
+        }
+
+        List<ItemCost> craftItemCostSourceList = itemCostList.stream()
+                .filter(itemCost -> itemCost.getId().equals(spell.getCraftItem().getItemId()))
+                .sorted(Comparator.comparing(ItemCost::getPrice, Comparator.reverseOrder()))
+                .collect(Collectors.toList());
+
+        ItemCost maxCostSource = craftItemCostSourceList.get(0);
+        ItemCost allianceItemCost = craftItemCostSourceList.stream().filter(itemCost -> itemCost.getSource().equals("alliance_auction")).findFirst().orElse(null);
+        ItemCost hordeItemCost = craftItemCostSourceList.stream().filter(itemCost -> itemCost.getSource().equals("horde_auction")).findFirst().orElse(null);
+        Integer allianceMinBuyout = allianceItemCost != null ? allianceItemCost.getPrice() : null;
+        Integer hordeMinBuyout = hordeItemCost != null ? hordeItemCost.getPrice() : null;
+
+
+        StringBuilder spellInfo = new StringBuilder();
+        spellInfo.append("spell: (")
+                .append(spell.getSpellId())
+                .append(") ")
+                .append(spell.getName())
+                .append("\n");
+
+        StringBuilder sellTo = new StringBuilder();
+        sellTo.append("sell to:\n");
+        for (ItemCost cost : craftItemCostSourceList) {
+            sellTo.append("\t")
+                    .append(priceToString(cost.getPrice()))
+                    .append(" ")
+                    .append(cost.getSource())
+                    .append("\n");
+        }
+
+        int craftCost = 0;
+
+        StringBuilder compInfo = new StringBuilder();
+        compInfo.append("components:\n");
+        for (wow.sniffer.entity.Component comp : spell.getComponents()) {
+
+            List<ItemCost> compItemCostSourceList = itemCostList.stream()
+                    .filter(itemCost -> itemCost.getId().equals(comp.getItem().getItemId()))
+                    .sorted(Comparator.comparing(ItemCost::getPrice))
+                    .collect(Collectors.toList());
+
+            craftCost += compItemCostSourceList.get(0).getPrice() * comp.getCount();
+            compInfo.append(comp.getCount())
+                    .append(" x (")
+                    .append(comp.getItem().getItemId())
+                    .append(") ")
+                    .append(comp.getItem().getName())
+                    .append("\n");
+            for (ItemCost cost : compItemCostSourceList) {
+                compInfo.append("\t")
+                        .append(priceToString(cost.getPrice()))
+                        .append(" ")
+                        .append(cost.getSource())
+                        .append("\n");
+            }
+        }
+        int profit = spell.getCraftItemCount() * maxCostSource.getPrice() - craftCost;
+
+        spellInfo.append("craft cost: ")
+                .append(priceToString(craftCost))
+                .append("\n")
+                .append("profit: ")
+                .append(priceToString(profit))
+                .append("\n");
+
+        if (!spell.getSubSpellSet().isEmpty()) {
+            spellInfo.append("subspells:\n");
+            for (Spell subSpell : spell.getSubSpellSet()) {
+                spellInfo.append("\t")
+                        .append(subSpell.getName())
+                        .append("\n");
+            }
+        }
+
+        String comment = spellInfo.toString() + "\n" + sellTo.toString() + "\n" + compInfo.toString();
+
+        resultList.add(new ItemProfitAction(spell.getCraftItem().getItemId(), "CRAFT", allianceMinBuyout, hordeMinBuyout, profit, comment, new Date()));
+
+        return resultList;
+    }
+
+    private List<ItemProfitAction> calculateResellProfit(List<ItemCost> itemsForCalc) {
         List<ItemProfitAction> resultList = new ArrayList<>();
 
         Map<Integer, List<ItemCost>> collect = itemsForCalc.stream().collect(Collectors.groupingBy(ItemCost::getId));
@@ -441,8 +442,8 @@ public class PacketHandler extends Thread {
             Integer hordeMinBuyout = hordeItemCost != null ? hordeItemCost.getPrice() : null;
 
             String action = "RESELL_" + minItemCost.getSource().toUpperCase() + "_TO_" + maxItemCost.getSource().toUpperCase();
-            String comment = minItemCost.getSource() + " " + costToString(minItemCost.getPrice()) +
-                    " -> " + maxItemCost.getSource() + " " + costToString(maxItemCost.getPrice());
+            String comment = minItemCost.getSource() + " " + priceToString(minItemCost.getPrice()) +
+                    " -> " + maxItemCost.getSource() + " " + priceToString(maxItemCost.getPrice());
 
             resultList.add(new ItemProfitAction(minItemCost.getId(), action, allianceMinBuyout, hordeMinBuyout, profit, comment, new Date()));
         }
@@ -450,7 +451,7 @@ public class PacketHandler extends Thread {
         return resultList;
     }
 
-    public static String costToString(Integer price) {
+    public static String priceToString(Integer price) {
         int cooper = price % 100;
         int silver = (price - cooper) % 10000 / 100;
         int gold = (price - silver - cooper) / 10000;
@@ -499,7 +500,7 @@ public class PacketHandler extends Thread {
     }
 
     private void smsgSendKnownSpells(Packet packet) throws IOException {
-        Set<Spell> spellSet = new HashSet<>();
+        List<Integer> spellIdList = new ArrayList<>();
         packet.skip(1);
         short count = packet.readShortE();
         log.info("Known spells: " + count);
@@ -507,33 +508,19 @@ public class PacketHandler extends Thread {
         for (int i = 0; i < count; i++) {
             int spellId = packet.readIntE();
             packet.skip(2);
-            spellRepository.findById(spellId).ifPresent(spellSet::add);
+            spellIdList.add(spellId);
         }
 
-        log.info("spell set from db: " + spellSet.size());
-        gameContext.getCharacter().setSpellSet(spellSet);
-        gameCharacterRepository.save(gameContext.getCharacter());
+        gameContextDAO.updateGameCharacterSpellIdList(gameContext.getPlayerGUID(), spellIdList);
     }
 
     private void cmsgPlayerLogin(Packet packet) throws IOException {
-        long guid = packet.readLongE();
-        for (GameCharacter gameCharacter : gameContext.getLoginChamberCharList()) {
-            if (gameCharacter.getCharId() == guid) {
-                gameContext.setCharacter(gameCharacter);
-                log.info("Login with character:");
-                log.info(String.valueOf(gameCharacter));
-                return;
-            }
-        }
-
-        throw new IllegalArgumentException("not found character with guid: " + Long.toHexString(guid));
+        gameContext.setPlayerGUID(packet.readLongE());
     }
 
     private void smsgEnumCharactersResult(Packet packet) throws IOException {
-        List<GameCharacter> charList = new ArrayList<>();
-
         log.info("Login chamber character list:");
-
+        List<GameCharacter> charList = new ArrayList<>();
         byte count = packet.readByte();
         for (int i = 0; i < count; i++) {
             long guid = packet.readLongE();
@@ -544,11 +531,11 @@ public class PacketHandler extends Thread {
             byte level = packet.readByte();
             packet.skip(252);
             GameCharacter gameCharacter = new GameCharacter(guid, charName);
-            log.info(String.valueOf(gameCharacter));
+            log.info(gameCharacter.toString());
             charList.add(gameCharacter);
         }
 
-        gameContext.setLoginChamberCharList(charList);
+        gameContextDAO.updateGameCharacterList(charList);
     }
 
     private void cmsgAuthSession(Packet packet) throws IOException {
