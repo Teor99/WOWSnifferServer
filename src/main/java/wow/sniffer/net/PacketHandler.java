@@ -350,7 +350,10 @@ public class PacketHandler extends Thread {
                         .append("\n");
             }
         }
-        int profit = spell.getCraftItemCount() * maxCostSource.getPrice() - craftCost;
+        // craft cost per item
+        craftCost /= spell.getCraftItemCount();
+        // profit per item
+        int profit = maxCostSource.getPrice() - craftCost;
 
         spellInfo.append("craft cost: ")
                 .append(priceToString(craftCost))
