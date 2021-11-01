@@ -281,6 +281,10 @@ public class PacketHandler extends Thread {
     private List<ItemProfitAction> calculateProfitListFromCraftSpell(Spell spell, List<ItemCost> itemCostList) {
         List<ItemProfitAction> resultList = new ArrayList<>();
 
+        if (spell.getCooldownTime() != 0) {
+            return resultList;
+        }
+
         // check all component have cost source
         boolean allComponentsCostExist = true;
         for (wow.sniffer.entity.Component component : spell.getComponents()) {

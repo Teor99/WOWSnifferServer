@@ -1,10 +1,12 @@
 package wow.sniffer;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import wow.sniffer.dao.GameContextDAO;
+import wow.sniffer.dao.SpellDAO;
 import wow.sniffer.entity.Component;
 import wow.sniffer.entity.Spell;
 
@@ -16,30 +18,34 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-/*@SpringBootApplication
+//@SpringBootApplication
 public class AltSpellSearcher implements CommandLineRunner {
-    private final Set<Spell> origSpellSet = new HashSet<>();
+
+    private final Logger log = LoggerFactory.getLogger(AltSpellSearcher.class);
 
     @Autowired
-    private GameContextDAO gameContextDAO;
+    private SpellDAO spellDAO;
+
+    private List<Spell> origSpells;
 
     @Override
     public void run(String... args) {
+        log.info("Load spells from DB");
         Instant before = Instant.now();
-        Iterable<Spell> all = spellRepository.findAll();
-        all.forEach(origSpellSet::add);
 
+        origSpells = spellDAO.findAllSpells();
+
+        log.info("Start search alternative spells");
 //        for (Spell spell : origSpellSet.stream().filter(spell -> spell.getSpellId().equals(29654)).collect(Collectors.toSet())) {
-
-        for (Spell spell : origSpellSet) {
+        for (Spell spell : origSpells) {
             processAltSpells(spell);
         }
 
-        System.out.println(Duration.between(before, Instant.now()));
+        log.info("All operations time: " + Duration.between(before, Instant.now()));
     }
 
     private void processAltSpells(Spell spell) {
-        System.out.println(spell);
+        log.info(spell.toString());
         Set<Spell> foundedAltSpellSet = new HashSet<>();
         int sizeBefore;
 
@@ -57,29 +63,11 @@ public class AltSpellSearcher implements CommandLineRunner {
         int subSpellId = spell.getSpellId() * 1000;
         for (Spell subSpell : foundedAltSpellSet) {
             subSpell.setSpellId(subSpellId++);
-
-            Set<Component> components = subSpell.getComponents();
-            subSpell.setComponents(null);
-            List<Spell> subSpellSet = subSpell.getSubSpellSet();
-            subSpell.setSubSpellSet(null);
-
-            // save empty sub spell
-            spellRepository.save(subSpell);
-
-            // save sub spell components
-            for (Component component : components) {
-                componentRepository.save(component);
-            }
-
-            // save sub spell full info
-            subSpell.setComponents(components);
-            subSpell.setSubSpellSet(subSpellSet);
-            spellRepository.save(subSpell);
         }
-
         spell.setAltSpellSet(foundedAltSpellSet);
-        System.out.println("found alt spells: " + foundedAltSpellSet.size());
-        spellRepository.save(spell);
+        log.info("found alt spells: " + foundedAltSpellSet.size());
+
+        spellDAO.saveNewSpell(spell);
     }
 
     private void processTempSpellSet(Spell rootSpell, Set<Spell> tempSpellSet) {
@@ -119,8 +107,6 @@ public class AltSpellSearcher implements CommandLineRunner {
         newSpell.setName(spell.getName());
         newSpell.setCraftItem(spell.getCraftItem());
         newSpell.setAutoUpdate(false);
-        newSpell.setCastTime(spell.getCastTime());
-        newSpell.setCooldownTime(spell.getCooldownTime());
         newSpell.setLevel(spell.getLevel());
 
         int multiplier = ignoredComp.getCount() / subSpell.getCraftItemCount();
@@ -136,6 +122,10 @@ public class AltSpellSearcher implements CommandLineRunner {
             newComponentMultiplier = multiplier;
         }
 
+        // cast time
+        newSpell.setCastTime(spell.getCastTime() + subSpell.getCastTime() * newComponentMultiplier);
+        // cooldown time
+        newSpell.setCooldownTime(spell.getCooldownTime() + subSpell.getCooldownTime() * newComponentMultiplier);
         // craft count
         newSpell.setCraftItemCount(spell.getCraftItemCount() * craftCountMultiplier);
 
@@ -161,7 +151,7 @@ public class AltSpellSearcher implements CommandLineRunner {
     }
 
     private Set<Spell> getCraftSpellsForItem(Integer itemId) {
-        return origSpellSet.stream()
+        return origSpells.stream()
                 .filter(spell -> spell.getCraftItem().getItemId().equals(itemId))
                 .collect(Collectors.toSet());
     }
@@ -169,4 +159,4 @@ public class AltSpellSearcher implements CommandLineRunner {
     public static void main(String[] args) {
         SpringApplication.run(AltSpellSearcher.class, args);
     }
-}*/
+}
