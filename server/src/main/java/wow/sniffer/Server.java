@@ -8,7 +8,6 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.ApplicationContext;
 import wow.sniffer.net.Packet;
-import wow.sniffer.net.PacketHandler;
 import wow.sniffer.net.PacketReader;
 
 import java.io.DataInputStream;

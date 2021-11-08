@@ -1,4 +1,4 @@
-package wow.sniffer.net;
+package wow.sniffer.io;
 
 import java.io.DataInputStream;
 import java.io.IOException;

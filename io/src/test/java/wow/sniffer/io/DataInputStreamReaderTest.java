@@ -1,11 +1,10 @@
-package wow.sniffer;
+package wow.sniffer.io;
 
 import org.junit.Test;
-import wow.sniffer.net.DataInputStreamReader;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
 
-public class UtilsTest {
+public class DataInputStreamReaderTest {
 
     @Test
     public void revertLong() {

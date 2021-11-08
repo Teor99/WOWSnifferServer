@@ -18,7 +18,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-//@SpringBootApplication
+@SpringBootApplication
 public class AltSpellSearcher implements CommandLineRunner {
 
     private final Logger log = LoggerFactory.getLogger(AltSpellSearcher.class);

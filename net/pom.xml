@@ -5,16 +5,16 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>wow.sniffer</groupId>
-    <artifactId>WOWSnifferServer</artifactId>
+    <artifactId>net</artifactId>
     <version>1.0-SNAPSHOT</version>
 
-    <packaging>pom</packaging>
-
-    <modules>
-        <module>io</module>
-        <module>net</module>
-        <module>spring-app</module>
-    </modules>
+    <dependencies>
+        <dependency>
+            <groupId>wow.sniffer</groupId>
+            <artifactId>io</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
+    </dependencies>
 
     <properties>
         <maven.compiler.source>11</maven.compiler.source>
@@ -22,4 +22,5 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     </properties>
+
 </project>

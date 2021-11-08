@@ -1,5 +1,7 @@
 package wow.sniffer.net;
 
+import wow.sniffer.io.DataInputStreamReader;
+
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.Date;

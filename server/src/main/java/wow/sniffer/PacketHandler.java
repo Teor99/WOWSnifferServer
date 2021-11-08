@@ -1,18 +1,20 @@
-package wow.sniffer.net;
+package wow.sniffer;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Scope;
-import org.springframework.stereotype.Component;
 import wow.sniffer.dao.GameContextDAO;
-import wow.sniffer.entity.*;
 import wow.sniffer.game.AuctionFaction;
 import wow.sniffer.game.AuctionRecord;
-import wow.sniffer.game.GameContext;
 import wow.sniffer.game.mail.Mail;
 import wow.sniffer.game.mail.MailItem;
 import wow.sniffer.game.mail.MailType;
+import wow.sniffer.entity.*;
+import wow.sniffer.game.GameContext;
+import wow.sniffer.net.Direction;
+import wow.sniffer.net.Opcode;
+import wow.sniffer.net.Packet;
 
 import java.io.IOException;
 import java.time.Duration;
@@ -21,7 +23,7 @@ import java.util.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.stream.Collectors;
 
-@Component
+@org.springframework.stereotype.Component
 @Scope("prototype")
 public class PacketHandler extends Thread {
 
@@ -287,7 +289,7 @@ public class PacketHandler extends Thread {
 
         // check all component have cost source
         boolean allComponentsCostExist = true;
-        for (wow.sniffer.entity.Component component : spell.getComponents()) {
+        for (Component component : spell.getComponents()) {
             if (itemCostList.stream().noneMatch(itemCost -> itemCost.getId().equals(component.getItem().getItemId()))) {
                 allComponentsCostExist = false;
                 break;
@@ -332,7 +334,7 @@ public class PacketHandler extends Thread {
 
         StringBuilder compInfo = new StringBuilder();
         compInfo.append("components:\n");
-        for (wow.sniffer.entity.Component comp : spell.getComponents()) {
+        for (Component comp : spell.getComponents()) {
 
             List<ItemCost> compItemCostSourceList = itemCostList.stream()
                     .filter(itemCost -> itemCost.getId().equals(comp.getItem().getItemId()))
