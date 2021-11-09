@@ -5,15 +5,15 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Scope;
 import wow.sniffer.dao.GameContextDAO;
+import wow.sniffer.entity.*;
 import wow.sniffer.game.AuctionFaction;
 import wow.sniffer.game.AuctionRecord;
+import wow.sniffer.game.GameContext;
 import wow.sniffer.game.mail.Mail;
 import wow.sniffer.game.mail.MailItem;
 import wow.sniffer.game.mail.MailType;
-import wow.sniffer.entity.*;
-import wow.sniffer.game.GameContext;
+import wow.sniffer.io.PacketDataReader;
 import wow.sniffer.net.Direction;
-import wow.sniffer.net.Opcode;
 import wow.sniffer.net.Packet;
 
 import java.io.IOException;
@@ -55,8 +55,7 @@ public class PacketHandler extends Thread {
     private void handlePacket(Packet packet) {
 
         try {
-            Opcode opcode = Opcode.getOpcodeByCode(packet.getOpcode());
-            switch (opcode) {
+            switch (packet.getOpcode()) {
                 case CMSG_AUTH_SESSION:
                     cmsgAuthSession(packet);
                     break;
@@ -76,7 +75,7 @@ public class PacketHandler extends Thread {
                     smsgAuctionListResult(packet);
                     break;
                 case MSG_AUCTION_HELLO:
-                    if (packet.getType() == Direction.ServerToClient.ordinal()) smsgAuctionHello(packet);
+                    if (packet.getDirection() == Direction.ServerToClient) smsgAuctionHello(packet);
                     break;
                 case SMSG_MAIL_LIST_RESULT:
                     smsgMailListResult(packet);
@@ -86,182 +85,194 @@ public class PacketHandler extends Thread {
                     break;
             }
         } catch (IOException e) {
-            log.error(String.valueOf(packet));
+            log.error(packet.toString());
             e.printStackTrace();
         }
 
     }
 
     private void smsgMailCommandResult(Packet packet) throws IOException {
-        int mailId = packet.readIntE();
-        int actionCode = packet.readIntE();
-        int errorCode = packet.readIntE();
+        try (PacketDataReader packetData = packet.getPacketDataReader()) {
 
-//        log.info("mailId: " + mailId + " action: " + actionCode + " error: " + errorCode);
+            int mailId = packetData.readIntE();
+            int actionCode = packetData.readIntE();
+            int errorCode = packetData.readIntE();
 
-        if (actionCode == 4 && errorCode == 0) {
-            Mail mailForRemove = gameContext.getMailList().stream().filter(mail -> mail.getId() == mailId).collect(Collectors.toList()).stream().findFirst().orElse(null);
-            if (mailForRemove == null) {
-                log.error("Not found mailId(" + mailId + ") in mail list");
-            } else {
-                if (mailForRemove.getMailType() == MailType.AUCTION) {
-                    String[] subjectArray = mailForRemove.getSubject().split(":");
-                    String[] bodyArray = mailForRemove.getBody().split(":");
-                    int itemId = Integer.parseInt(subjectArray[0]);
-                    int action = Integer.parseInt(subjectArray[2]);
-                    int count = Integer.parseInt(subjectArray[4]);
-                    int cost = Integer.parseInt(bodyArray[2]) / count;
-                    String actionString = null;
-                    if (action == 1) {
-                        actionString = "buy";
-                    } else if (action == 2) {
-                        actionString = "sell";
+            if (actionCode == 4 && errorCode == 0) {
+                Mail mailForRemove = gameContext.getMailList().stream().filter(mail -> mail.getId() == mailId).collect(Collectors.toList()).stream().findFirst().orElse(null);
+                if (mailForRemove == null) {
+                    log.error("Not found mailId(" + mailId + ") in mail list");
+                } else {
+                    if (mailForRemove.getMailType() == MailType.AUCTION) {
+                        String[] subjectArray = mailForRemove.getSubject().split(":");
+                        String[] bodyArray = mailForRemove.getBody().split(":");
+                        int itemId = Integer.parseInt(subjectArray[0]);
+                        int action = Integer.parseInt(subjectArray[2]);
+                        int count = Integer.parseInt(subjectArray[4]);
+                        int cost = Integer.parseInt(bodyArray[2]) / count;
+                        String actionString = null;
+                        if (action == 1) {
+                            actionString = "buy";
+                        } else if (action == 2) {
+                            actionString = "sell";
+                        }
+
+                        if (actionString != null) {
+                            gameContextDAO.saveTradeHistoryRecord(new TradeHistoryRecord(itemId, packet.getTimestamp(), actionString, count, cost));
+                        }
                     }
 
-                    if (actionString != null) {
-                        gameContextDAO.saveTradeHistoryRecord(new TradeHistoryRecord(itemId, packet.getTimestamp(), actionString, count, cost));
-                    }
+                    gameContext.getMailList().remove(mailForRemove);
                 }
-
-                gameContext.getMailList().remove(mailForRemove);
             }
         }
-
     }
 
     private void smsgMailListResult(Packet packet) throws IOException {
-        List<Mail> mailList = new ArrayList<>();
-        int totalMailCount = packet.readIntE();
-        byte mailCount = packet.readByte();
-        for (int i = 0; i < mailCount; i++) {
-            short msgSize = packet.readShortE();
-            int mailId = packet.readIntE();
-            MailType mailType = MailType.getMailTypeByCode(packet.readByte());
-            long playerGUID = 0;
-            int entry = 0;
-            switch (mailType) {
-                case NORMAL:
-                    playerGUID = packet.readLongE();
-                    break;
-                case CREATURE:
-                case GAMEOBJECT:
-                case ITEM:
-                case AUCTION:
-                    entry = packet.readIntE();
-                    break;
-            }
-            int cod = packet.readIntE();
-            int packageId = packet.readIntE();
-            int stationery = packet.readIntE();
-            int money = packet.readIntE();
-            int flags = packet.readIntE();
-            int time = packet.readIntE();
-            int templateId = packet.readIntE();
-            String subject = packet.readCString();
-            String body = packet.readCString().trim();
+        try (PacketDataReader packetData = packet.getPacketDataReader()) {
 
-            int packageItemCount = packet.readByte();
-            List<MailItem> attachedItems = new ArrayList<>();
-            for (int j = 0; j < packageItemCount; j++) {
-                byte itemIndex = packet.readByte();
-                int guid = packet.readIntE();
-                int itemId = packet.readIntE();
-                for (int k = 0; k < 7; k++) {
-                    packet.skip(12);
+            List<Mail> mailList = new ArrayList<>();
+            int totalMailCount = packetData.readIntE();
+            byte mailCount = packetData.readByte();
+            for (int i = 0; i < mailCount; i++) {
+                short msgSize = packetData.readShortE();
+                int mailId = packetData.readIntE();
+                MailType mailType = MailType.getMailTypeByCode(packetData.readByte());
+                long playerGUID = 0;
+                int entry = 0;
+                switch (mailType) {
+                    case NORMAL:
+                        playerGUID = packetData.readLongE();
+                        break;
+                    case CREATURE:
+                    case GAMEOBJECT:
+                    case ITEM:
+                    case AUCTION:
+                        entry = packetData.readIntE();
+                        break;
                 }
-                packet.skip(8);
-                int itemCount = packet.readIntE();
-                packet.skip(13);
-                attachedItems.add(new MailItem(guid, itemId, itemCount));
-            }
-            mailList.add(new Mail(mailId, msgSize, mailType, playerGUID, entry, cod, packageId, stationery, money, flags,
-                    time, templateId, subject, body, attachedItems));
-        }
+                int cod = packetData.readIntE();
+                int packageId = packetData.readIntE();
+                int stationery = packetData.readIntE();
+                int money = packetData.readIntE();
+                int flags = packetData.readIntE();
+                int time = packetData.readIntE();
+                int templateId = packetData.readIntE();
+                String subject = packetData.readCString();
+                String body = packetData.readCString().trim();
 
-        gameContext.setMailList(mailList);
+                int packageItemCount = packetData.readByte();
+                List<MailItem> attachedItems = new ArrayList<>();
+                for (int j = 0; j < packageItemCount; j++) {
+                    byte itemIndex = packetData.readByte();
+                    int guid = packetData.readIntE();
+                    int itemId = packetData.readIntE();
+                    for (int k = 0; k < 7; k++) {
+                        packetData.skip(12);
+                    }
+                    packetData.skip(8);
+                    int itemCount = packetData.readIntE();
+                    packetData.skip(13);
+                    attachedItems.add(new MailItem(guid, itemId, itemCount));
+                }
+                mailList.add(new Mail(mailId, msgSize, mailType, playerGUID, entry, cod, packageId, stationery, money, flags,
+                        time, templateId, subject, body, attachedItems));
+            }
+
+            gameContext.setMailList(mailList);
+        }
     }
 
     private void cmsgAuctionListItems(Packet packet) throws IOException {
-        packet.skip(8);
-        int savedAuctionRecords = packet.readIntE();
-        if (savedAuctionRecords == 0) {
-            gameContext.getAuctionRecords().clear();
-        } else if (savedAuctionRecords != gameContext.getAuctionRecords().size()) {
-            log.info("auction records count not equals: context - "
-                    + gameContext.getAuctionRecords().size()
-                    + " expected - " + savedAuctionRecords);
+        try (PacketDataReader packetData = packet.getPacketDataReader()) {
+
+            packetData.skip(8);
+            int savedAuctionRecords = packetData.readIntE();
+            if (savedAuctionRecords == 0) {
+                gameContext.getAuctionRecords().clear();
+            } else if (savedAuctionRecords != gameContext.getAuctionRecords().size()) {
+                log.info("auction records count not equals: context - "
+                        + gameContext.getAuctionRecords().size()
+                        + " expected - " + savedAuctionRecords);
+            }
         }
     }
 
     private void smsgAuctionHello(Packet packet) throws IOException {
-        packet.skip(8);
-        int ahId = packet.readIntE();
+        try (PacketDataReader packetData = packet.getPacketDataReader()) {
 
-        gameContext.setAuctionFaction(AuctionFaction.getFactionByCode(ahId));
+            packetData.skip(8);
+            int ahId = packetData.readIntE();
 
-        log.info("Set auction faction as: " + gameContext.getAuctionFaction().name());
+            gameContext.setAuctionFaction(AuctionFaction.getFactionByCode(ahId));
 
-        gameContextDAO.deleteOldItemCostRecords();
-        gameContextDAO.deleteOldItemProfitActionRecords();
+            log.info("Set auction faction as: " + gameContext.getAuctionFaction().name());
+
+            gameContextDAO.deleteOldItemCostRecords();
+            gameContextDAO.deleteOldItemProfitActionRecords();
+        }
     }
 
     private void smsgAuctionListResult(Packet packet) throws IOException {
-        Instant start = Instant.now();
-        int count = packet.readIntE();
-        if (count == 0) return;
+        try (PacketDataReader packetData = packet.getPacketDataReader()) {
 
-        for (int i = 0; i < count; i++) {
-            packet.skip(4);
-            int id = packet.readIntE();
-            packet.skip(92);
-            int itemCount = packet.readIntE();
-            packet.skip(24);
-            int buyout = packet.readIntE();
-            packet.skip(16);
-            gameContext.getAuctionRecords().add(new AuctionRecord(id, packet.getTimestamp(), itemCount, buyout));
-        }
+            Instant start = Instant.now();
+            int count = packetData.readIntE();
+            if (count == 0) return;
 
-        int totalItemCount = packet.readIntE();
-        if (totalItemCount == 0) {
-            throw new IllegalArgumentException("Auction list result total count 0, but count: " + count);
-        }
-        packet.skip(4);
-
-        boolean isFullScan = totalItemCount > 1000;
-
-        if (totalItemCount == gameContext.getAuctionRecords().size()) {
-            List<ItemCost> itemCostList = getItemStatListFromAuctionRecordsList(gameContext.getAuctionRecords());
-
-            // save item price history if fullscan
-            if (isFullScan) {
-                List<ItemHistory> itemHistoryList = new ArrayList<>();
-                for (ItemCost itemCost : itemCostList) {
-                    itemHistoryList.add(new ItemHistory(itemCost.getId(), itemCost.getPrice(), packet.getTimestamp()));
-                }
-                gameContextDAO.saveItemHistoryList(itemHistoryList);
+            for (int i = 0; i < count; i++) {
+                packetData.skip(4);
+                int id = packetData.readIntE();
+                packetData.skip(92);
+                int itemCount = packetData.readIntE();
+                packetData.skip(24);
+                int buyout = packetData.readIntE();
+                packetData.skip(16);
+                gameContext.getAuctionRecords().add(new AuctionRecord(id, packet.getTimestamp(), itemCount, buyout));
             }
 
-            // save items prices
-            gameContextDAO.saveItemCostList(itemCostList);
-            gameContextDAO.deleteOldItemCostRecords();
+            int totalItemCount = packetData.readIntE();
+            if (totalItemCount == 0) {
+                throw new IllegalArgumentException("Auction list result total count 0, but count: " + count);
+            }
+            packetData.skip(4);
 
-            // clear profit
-            gameContextDAO.deleteAllItemProfitActionRecords();
+            boolean isFullScan = totalItemCount > 1000;
 
-            // get item prices for profit calc
-            List<ItemCost> allItemCostList = gameContextDAO.getAllItemCostList();
+            if (totalItemCount == gameContext.getAuctionRecords().size()) {
+                List<ItemCost> itemCostList = getItemStatListFromAuctionRecordsList(gameContext.getAuctionRecords());
 
-            // calc resell profit
-            List<ItemProfitAction> itemProfitActions = calculateResellProfit(allItemCostList);
-            gameContextDAO.updateItemProfitActionList(itemProfitActions);
+                // save item price history if fullscan
+                if (isFullScan) {
+                    List<ItemHistory> itemHistoryList = new ArrayList<>();
+                    for (ItemCost itemCost : itemCostList) {
+                        itemHistoryList.add(new ItemHistory(itemCost.getId(), itemCost.getPrice(), packet.getTimestamp()));
+                    }
+                    gameContextDAO.saveItemHistoryList(itemHistoryList);
+                }
 
-            // calc craft profit
-            List<Spell> craftSpells = gameContextDAO.getAutoUpdateCraftSpells();
-            gameContextDAO.updateItemProfitActionList(calculateProfitListFromCraftSpellList(craftSpells, allItemCostList));
+                // save items prices
+                gameContextDAO.saveItemCostList(itemCostList);
+                gameContextDAO.deleteOldItemCostRecords();
 
-            Instant finish = Instant.now();
+                // clear profit
+                gameContextDAO.deleteAllItemProfitActionRecords();
 
-            log.info("Auction response package processing took: " + Duration.between(start, finish).toSeconds() + " seconds, updated item count: " + itemCostList.size());
+                // get item prices for profit calc
+                List<ItemCost> allItemCostList = gameContextDAO.getAllItemCostList();
+
+                // calc resell profit
+                List<ItemProfitAction> itemProfitActions = calculateResellProfit(allItemCostList);
+                gameContextDAO.updateItemProfitActionList(itemProfitActions);
+
+                // calc craft profit
+                List<Spell> craftSpells = gameContextDAO.getAutoUpdateCraftSpells();
+                gameContextDAO.updateItemProfitActionList(calculateProfitListFromCraftSpellList(craftSpells, allItemCostList));
+
+                Instant finish = Instant.now();
+
+                log.info("Auction response package processing took: " + Duration.between(start, finish).toSeconds() + " seconds, updated item count: " + itemCostList.size());
+            }
         }
     }
 
@@ -509,48 +520,58 @@ public class PacketHandler extends Thread {
     }
 
     private void smsgSendKnownSpells(Packet packet) throws IOException {
-        List<Integer> spellIdList = new ArrayList<>();
-        packet.skip(1);
-        short count = packet.readShortE();
-        log.info("Known spells: " + count);
+        try (PacketDataReader packetData = packet.getPacketDataReader()) {
 
-        for (int i = 0; i < count; i++) {
-            int spellId = packet.readIntE();
-            packet.skip(2);
-            spellIdList.add(spellId);
+            List<Integer> spellIdList = new ArrayList<>();
+            packetData.skip(1);
+            short count = packetData.readShortE();
+            log.info("Known spells: " + count);
+
+            for (int i = 0; i < count; i++) {
+                int spellId = packetData.readIntE();
+                packetData.skip(2);
+                spellIdList.add(spellId);
+            }
+
+            gameContextDAO.updateGameCharacterSpellIdList(gameContext.getPlayerGUID(), spellIdList);
         }
-
-        gameContextDAO.updateGameCharacterSpellIdList(gameContext.getPlayerGUID(), spellIdList);
     }
 
     private void cmsgPlayerLogin(Packet packet) throws IOException {
-        gameContext.setPlayerGUID(packet.readLongE());
+        try (PacketDataReader packetData = packet.getPacketDataReader()) {
+            gameContext.setPlayerGUID(packetData.readLongE());
+        }
     }
 
     private void smsgEnumCharactersResult(Packet packet) throws IOException {
-        log.info("Login chamber character list:");
-        List<GameCharacter> charList = new ArrayList<>();
-        byte count = packet.readByte();
-        for (int i = 0; i < count; i++) {
-            long guid = packet.readLongE();
-            String charName = packet.readCString();
-            byte raceCode = packet.readByte();
-            byte classCode = packet.readByte();
-            packet.skip(6);
-            byte level = packet.readByte();
-            packet.skip(252);
-            GameCharacter gameCharacter = new GameCharacter(guid, charName);
-            log.info(gameCharacter.toString());
-            charList.add(gameCharacter);
-        }
+        try (PacketDataReader packetData = packet.getPacketDataReader()) {
 
-        gameContextDAO.updateGameCharacterList(charList);
+            log.info("Login chamber character list:");
+            List<GameCharacter> charList = new ArrayList<>();
+            byte count = packetData.readByte();
+            for (int i = 0; i < count; i++) {
+                long guid = packetData.readLongE();
+                String charName = packetData.readCString();
+                byte raceCode = packetData.readByte();
+                byte classCode = packetData.readByte();
+                packetData.skip(6);
+                byte level = packetData.readByte();
+                packetData.skip(252);
+                GameCharacter gameCharacter = new GameCharacter(guid, charName);
+                log.info(gameCharacter.toString());
+                charList.add(gameCharacter);
+            }
+
+            gameContextDAO.updateGameCharacterList(charList);
+        }
     }
 
     private void cmsgAuthSession(Packet packet) throws IOException {
-        packet.skip(8);
-        gameContext.setAccountName(packet.readCString());
-        log.info("Client auth request with account: " + gameContext.getAccountName());
+        try (PacketDataReader packetData = packet.getPacketDataReader()) {
+            packetData.skip(8);
+            gameContext.setAccountName(packetData.readCString());
+            log.info("Client auth request with account: " + gameContext.getAccountName());
+        }
     }
 
     public BlockingQueue<Packet> getQueue() {

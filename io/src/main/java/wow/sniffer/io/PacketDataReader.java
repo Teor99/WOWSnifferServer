@@ -4,11 +4,11 @@ import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 
-public class DataInputStreamReader {
+public class PacketDataReader implements AutoCloseable {
     private static final char[] HEX_ARRAY = "0123456789ABCDEF".toCharArray();
     private final DataInputStream dis;
 
-    public DataInputStreamReader(InputStream inputStream) {
+    public PacketDataReader(InputStream inputStream) {
         this.dis = new DataInputStream(inputStream);
     }
 
@@ -104,5 +104,22 @@ public class DataInputStreamReader {
 
     public void skip(int i) throws IOException {
         dis.skip(i);
+    }
+
+    @Override
+    public void close() throws IOException {
+        dis.close();
+    }
+
+    public String readCString() throws IOException {
+        StringBuilder sb = new StringBuilder();
+
+        while (true) {
+            byte b = dis.readByte();
+            if (b == 0) break;
+            sb.append((char) b);
+        }
+
+        return sb.toString();
     }
 }

@@ -10,7 +10,6 @@ import org.springframework.context.ApplicationContext;
 import wow.sniffer.net.Packet;
 import wow.sniffer.net.PacketReader;
 
-import java.io.DataInputStream;
 import java.io.EOFException;
 import java.net.Inet4Address;
 import java.net.ServerSocket;
@@ -43,8 +42,7 @@ public class Server implements CommandLineRunner {
                     packetHandler.setName("PacketHandler");
                     packetHandler.setQueue(queue);
                     packetHandler.start();
-                    try {
-                        PacketReader packetReader = new PacketReader(new DataInputStream(clientSocket.getInputStream()));
+                    try (PacketReader packetReader = new PacketReader(clientSocket.getInputStream())) {
                         while (true) {
                             Packet packet = packetReader.readPacket();
                             queue.add(packet);

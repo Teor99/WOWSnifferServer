@@ -1,56 +1,36 @@
 package wow.sniffer.net;
 
-import wow.sniffer.io.DataInputStreamReader;
+import wow.sniffer.io.PacketDataReader;
 
 import java.io.ByteArrayInputStream;
-import java.io.IOException;
 import java.util.Date;
 
 public class Packet {
 
-    private final int opcode;
+    private final Direction direction;
+    private final Opcode opcode;
     private final int size;
     private final Date timestamp;
-    private final byte type;
-    private DataInputStreamReader data;
+    private final byte[] data;
 
-    public Packet(int opcode, int size, Date timestamp, byte type, byte[] data) {
+    public Packet(Opcode opcode, int size, Date timestamp, Direction direction, byte[] data) {
         this.opcode = opcode;
         this.size = size;
         this.timestamp = timestamp;
-        this.type = type;
-        if (data != null) {
-            this.data = new DataInputStreamReader(new ByteArrayInputStream(data));
-        }
+        this.direction = direction;
+        this.data = data;
     }
 
     @Override
     public String toString() {
-        StringBuilder sb = new StringBuilder();
 
-        if (type == 0) {
-            sb.append("CMSG: ");
-        } else if (type == 1) {
-            sb.append("SMSG: ");
-        } else {
-            sb.append("unknownType(").append(Integer.toHexString(type)).append(") ");
-        }
-
-        sb.append("opcode(").append(Integer.toHexString(opcode)).append(") ");
-        sb.append("length: ").append(size).append(" ");
-        sb.append("timestamp: ").append(timestamp).append("\n");
-        if (size > 0) {
-            try {
-                sb.append("data: ").append(data.bytesToHexString());
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-
-        return sb.toString();
+        return direction.toString() +
+                " " + opcode.toString() +
+                "length: " + size + " " +
+                "timestamp: " + timestamp;
     }
 
-    public int getOpcode() {
+    public Opcode getOpcode() {
         return opcode;
     }
 
@@ -62,40 +42,15 @@ public class Packet {
         return timestamp;
     }
 
-    public byte getType() {
-        return type;
+    public Direction getDirection() {
+        return direction;
     }
 
-    public int readIntE() throws IOException {
-        return data.readIntE();
+    public byte[] getData() {
+        return data;
     }
 
-    public byte readByte() throws IOException {
-        return data.readByte();
-    }
-
-    public short readShortE() throws IOException {
-        return data.readShortE();
-
-    }
-
-    public long readLongE() throws IOException {
-        return data.readLongE();
-    }
-
-    public String readCString() throws IOException {
-        StringBuilder sb = new StringBuilder();
-
-        while (true) {
-            byte b = data.readByte();
-            if (b == 0) break;
-            sb.append((char) b);
-        }
-
-        return sb.toString();
-    }
-
-    public void skip(int i) throws IOException {
-        data.skip(i);
+    public PacketDataReader getPacketDataReader() {
+        return new PacketDataReader(new ByteArrayInputStream(data));
     }
 }
