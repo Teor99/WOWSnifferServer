@@ -1344,6 +1344,8 @@ public enum Opcode {
 
     @Override
     public String toString() {
-        return name() + " (0x" + Integer.toHexString(value) + ")";
+        String hexString = ("0000" + Integer.toHexString(value).toUpperCase());
+        hexString = hexString.substring(hexString.length() - 4);
+        return name() + " (0x" + hexString + ")";
     }
 }

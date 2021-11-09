@@ -3,6 +3,7 @@ package wow.sniffer.net;
 import wow.sniffer.io.PacketDataReader;
 
 import java.io.ByteArrayInputStream;
+import java.text.SimpleDateFormat;
 import java.util.Date;
 
 public class Packet {
@@ -25,9 +26,9 @@ public class Packet {
     public String toString() {
 
         return direction.toString() +
-                " " + opcode.toString() +
-                "length: " + size + " " +
-                "timestamp: " + timestamp;
+                ": " + opcode.toString() +
+                " Length: " + size +
+                " Time: " + new SimpleDateFormat("MM/dd/yyyy HH:mm:ss.SSS").format(timestamp);
     }
 
     public Opcode getOpcode() {
