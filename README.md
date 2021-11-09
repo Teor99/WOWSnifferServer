@@ -19,13 +19,16 @@ The project is in prototype state and starts directly from IntelliJ IDEA 2020.3.
 ### Features
  - Process response packages from the Auction House and keep the minimum price for the item. Both single item requests and full scan packages (55,000 items) are supported.
 Screenshot of how it is stored in the database:
-<p align="center"><img src="https://user-images.githubusercontent.com/5261564/135902541-d882a6e2-d170-4575-b406-8b66464fc893.png"/></p>
+<p align="center"><img src="https://user-images.githubusercontent.com/5261564/140885963-4cc35b53-6374-494e-bd30-e5aa9c1e1332.png"/></p>
+
+ - Calculation of profit when reselling or crafting an item. Also, a comment is compiled for each entry, which contains the components and their cost.
+<p align="center"><img src="https://user-images.githubusercontent.com/5261564/140887266-703b049c-b2ed-4998-aaa9-a5d9d895dd7f.png"/></p>
 
 
  - Saving the history of the price of an item, for statistics. For example: minimum price, median price per month / week / day.
 They are saved simultaneously with the upper table.
-<p align="center"><img src="https://user-images.githubusercontent.com/5261564/135904553-cbcef2a9-a417-4bc2-bb89-b81dd1838e32.png"/></p>
+<p align="center"><img src="https://user-images.githubusercontent.com/5261564/140886112-fd8b33bf-8edd-4f03-8006-90400f7b54a0.png"/></p>
 
 
  - Saving information about purchases / sales in the Auction House for keeping statistics of purchase prices of materials, their quantity, counting the money earned from the sale of goods, what goods, their quantity. Information is taken from the mailbox when the letter(with money or items) is picked up.
-<p align="center"><img src="https://user-images.githubusercontent.com/5261564/135905755-4494d37d-75c1-438c-9a40-5822e557aa2b.png"/></p>
+<p align="center"><img src="https://user-images.githubusercontent.com/5261564/140885806-8ed3cbaf-e831-47b1-819e-8a08f397f68c.png"/></p>
