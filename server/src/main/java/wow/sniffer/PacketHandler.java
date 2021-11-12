@@ -16,6 +16,7 @@ import wow.sniffer.io.PacketDataReader;
 import wow.sniffer.net.Direction;
 import wow.sniffer.net.Packet;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
@@ -23,6 +24,8 @@ import java.util.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
+import java.util.zip.DataFormatException;
+import java.util.zip.Inflater;
 
 @org.springframework.stereotype.Component
 @Scope("prototype")
@@ -87,10 +90,53 @@ public class PacketHandler extends Thread {
                 case SMSG_AUCTION_LIST_OWNER_ITEMS_RESULT:
                     smsgAuctionListOwnerItemsResult(packet);
                     break;
+                case SMSG_COMPRESSED_UPDATE_OBJECT:
+                    smsgCompressedUpdateObject(packet);
+                    break;
             }
         } catch (Exception e) {
             log.error(packet.toString());
             log.error("Error while packet handling ", e);
+        }
+    }
+
+    private void decompressPacket(Packet packet) throws IOException, DataFormatException {
+        int size = 0;
+        try (PacketDataReader packetData = packet.getPacketDataReader()) {
+            size = packetData.readIntE();
+        }
+
+        byte[] data = Arrays.copyOfRange(packet.getData(), 4, packet.getData().length);
+
+        Inflater inflater = new Inflater();
+        inflater.setInput(data);
+
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream(data.length);
+        byte[] buffer = new byte[1024];
+        while (!inflater.finished()) {
+            int count = inflater.inflate(buffer);
+            outputStream.write(buffer, 0, count);
+        }
+        outputStream.close();
+        byte[] output = outputStream.toByteArray();
+
+        log.debug("Original: " + data.length);
+        log.debug("Compressed: " + output.length);
+
+        packet.setData(output);
+    }
+
+    private void smsgCompressedUpdateObject(Packet packet) throws IOException, DataFormatException {
+        decompressPacket(packet);
+
+        try (PacketDataReader packetData = packet.getPacketDataReader()) {
+            int count = packetData.readIntE();
+            for (int i = 0; i < count; i++) {
+                byte type = packetData.readByte();
+                if (type != 2) throw new IllegalArgumentException("Unknown update type: " + type);
+
+
+            }
         }
     }
 

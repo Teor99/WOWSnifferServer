@@ -18,11 +18,16 @@ public class DumpFileSender {
 
             socket.connect(socketAddress, 1000);
             System.out.println("Connected success");
+            System.out.println("send data");
+
             try (BufferedInputStream file = new BufferedInputStream(new FileInputStream(args[0]))) {
                 socket.getOutputStream().write(file.readAllBytes());
             }
 
+            System.out.println("end");
             BufferedReader console = new BufferedReader(new InputStreamReader(System.in));
+
+            System.out.println("press enter to close connect");
             console.readLine();
         }
     }

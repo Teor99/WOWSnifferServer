@@ -12,7 +12,7 @@ public class Packet {
     private final Opcode opcode;
     private final int size;
     private final Date timestamp;
-    private final byte[] data;
+    private byte[] data;
 
     public Packet(Opcode opcode, int size, Date timestamp, Direction direction, byte[] data) {
         this.opcode = opcode;
@@ -49,6 +49,10 @@ public class Packet {
 
     public byte[] getData() {
         return data;
+    }
+
+    public void setData(byte[] data) {
+        this.data = data;
     }
 
     public PacketDataReader getPacketDataReader() {
