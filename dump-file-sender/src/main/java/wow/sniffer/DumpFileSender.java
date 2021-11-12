@@ -21,6 +21,9 @@ public class DumpFileSender {
             try (BufferedInputStream file = new BufferedInputStream(new FileInputStream(args[0]))) {
                 socket.getOutputStream().write(file.readAllBytes());
             }
+
+            BufferedReader console = new BufferedReader(new InputStreamReader(System.in));
+            console.readLine();
         }
     }
 }

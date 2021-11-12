@@ -25,8 +25,6 @@ public class Server implements CommandLineRunner {
     @Autowired
     private ApplicationContext ctx;
 
-    private final BlockingQueue<Packet> queue = new LinkedBlockingQueue<>();
-
     public static void main(String[] args) {
         SpringApplication.run(Server.class, args);
     }
@@ -38,6 +36,7 @@ public class Server implements CommandLineRunner {
                 log.info("Server start listen on: " + serverSocket.getLocalSocketAddress());
                 try (Socket clientSocket = serverSocket.accept()) {
                     log.info("New connection from: " + clientSocket.getRemoteSocketAddress());
+                    BlockingQueue<Packet> queue = new LinkedBlockingQueue<>();
                     PacketHandler packetHandler = ctx.getBean(PacketHandler.class);
                     packetHandler.setName("PacketHandler");
                     packetHandler.setQueue(queue);

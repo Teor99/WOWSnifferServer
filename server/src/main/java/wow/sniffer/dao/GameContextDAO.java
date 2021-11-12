@@ -95,4 +95,24 @@ public class GameContextDAO {
 
         return resultList;
     }
+
+    public GameCharacter getGameCharacterById(Long playerGUID) {
+        return entityManager.find(GameCharacter.class, playerGUID);
+    }
+
+    @Transactional
+    public void updateItemForSaleList(List<ItemForSale> items) {
+        if (items.isEmpty()) return;
+
+        long charId = items.get(0)
+                .getItemForSaleId()
+                .getGameCharacter()
+                .getCharId();
+
+        entityManager.createNativeQuery("DELETE FROM item_for_sale WHERE game_character_char_id = :char_id")
+                .setParameter("char_id", charId)
+                .executeUpdate();
+
+        items.forEach(entityManager::merge);
+    }
 }
