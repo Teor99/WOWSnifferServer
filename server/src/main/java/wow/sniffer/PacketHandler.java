@@ -359,13 +359,31 @@ public class PacketHandler extends Thread {
                 .sorted(Comparator.comparing(ItemCost::getPrice, Comparator.reverseOrder()))
                 .collect(Collectors.toList());
 
-        ItemCost maxCostSource = craftItemCostSourceList.get(0);
-        ItemCost allianceItemCost = craftItemCostSourceList.stream().filter(itemCost -> itemCost.getSource().equals("alliance_auction")).findFirst().orElse(null);
-        ItemCost hordeItemCost = craftItemCostSourceList.stream().filter(itemCost -> itemCost.getSource().equals("horde_auction")).findFirst().orElse(null);
+        ItemCost allianceItemCost = craftItemCostSourceList.stream()
+                .filter(itemCost -> itemCost.getSource().equals("alliance_auction"))
+                .findFirst()
+                .orElse(null);
+
+        ItemCost hordeItemCost = craftItemCostSourceList.stream()
+                .filter(itemCost -> itemCost.getSource().equals("horde_auction"))
+                .findFirst()
+                .orElse(null);
+
         Integer allianceMinBuyout = allianceItemCost != null ? allianceItemCost.getPrice() : null;
         Integer hordeMinBuyout = hordeItemCost != null ? hordeItemCost.getPrice() : null;
 
+        if (allianceItemCost != null) {
+            resultList.add(getItemProfitAction(spell, "CRAFT_SELL_TO_ALLIANCE", itemCostList, craftItemCostSourceList, allianceItemCost, allianceMinBuyout, hordeMinBuyout));
+        }
 
+        if (hordeItemCost != null) {
+            resultList.add(getItemProfitAction(spell, "CRAFT_SELL_TO_HORDE", itemCostList, craftItemCostSourceList, hordeItemCost, allianceMinBuyout, hordeMinBuyout));
+        }
+
+        return resultList;
+    }
+
+    private ItemProfitAction getItemProfitAction(Spell spell, String actionMessage, List<ItemCost> itemCostList, List<ItemCost> craftItemCostSourceList, ItemCost sourceCost, Integer allianceMinBuyout, Integer hordeMinBuyout) {
         StringBuilder spellInfo = new StringBuilder();
         spellInfo.append("spell: (")
                 .append(spell.getSpellId())
@@ -374,7 +392,7 @@ public class PacketHandler extends Thread {
                 .append("\n");
 
         StringBuilder sellTo = new StringBuilder();
-        sellTo.append("sell to:\n");
+        sellTo.append("can sell to:\n");
         for (ItemCost cost : craftItemCostSourceList) {
             sellTo.append("\t")
                     .append(priceToString(cost.getPrice()))
@@ -412,7 +430,7 @@ public class PacketHandler extends Thread {
         // craft cost per item
         craftCost /= spell.getCraftItemCount();
         // profit per item
-        int profit = maxCostSource.getPrice() - craftCost;
+        int profit = sourceCost.getPrice() - craftCost;
 
         spellInfo.append("craft cost: ")
                 .append(priceToString(craftCost))
@@ -431,10 +449,7 @@ public class PacketHandler extends Thread {
         }
 
         String comment = spellInfo.toString() + "\n" + sellTo.toString() + "\n" + compInfo.toString();
-
-        resultList.add(new ItemProfitAction(spell.getCraftItem().getItemId(), "CRAFT", allianceMinBuyout, hordeMinBuyout, profit, comment, new Date()));
-
-        return resultList;
+        return new ItemProfitAction(spell.getCraftItem().getItemId(), actionMessage, allianceMinBuyout, hordeMinBuyout, profit, comment, new Date());
     }
 
     private List<ItemProfitAction> calculateResellProfit(List<ItemCost> itemsForCalc) {
